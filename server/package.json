@@ -1,0 +1,16 @@
+{
+  "name": "v_call-server",
+  "version": "1.0.0",
+  "description": "Signaling server for V-Call",
+  "main": "index.js",
+  "type": "module",
+  "scripts": {
+    "dev": "node index.js",
+    "start": "node index.js"
+  },
+  "dependencies": {
+    "cors": "^2.8.5",
+    "express": "^4.19.2",
+    "socket.io": "^4.7.5"
+  }
+}
