@@ -3,16 +3,28 @@ import { io, Socket } from 'socket.io-client';
 
 const SIGNALING_SERVER = import.meta.env.VITE_SIGNALING_SERVER || 'http://localhost:5001';
 
-// Public STUN servers for standard NAT traversal
-const ICE_SERVERS = {
+// Public STUN/TURN servers for robust NAT traversal and connection reliability
+const ICE_SERVERS: RTCConfiguration = {
   iceServers: [
     { urls: 'stun:stun.l.google.com:19302' },
     { urls: 'stun:stun1.l.google.com:19302' },
     { urls: 'stun:stun2.l.google.com:19302' },
+    // Free TURN/STUN relays from Metered.ca (Open Relay Project) to bypass symmetric NATs and restrictive firewalls
+    {
+      urls: [
+        'turn:openrelay.metered.ca:80',
+        'turn:openrelay.metered.ca:443',
+        'turn:openrelay.metered.ca:443?transport=tcp'
+      ],
+      username: 'openrelayproject',
+      credential: 'openrelayproject'
+    }
   ],
+  bundlePolicy: 'max-bundle',
+  rtcpMuxPolicy: 'require',
 };
 
-// Helper to modify SDP to force high-fidelity HD Opus audio settings (stereo, 128kbps, Forward Error Correction)
+// Helper to modify SDP to force high-fidelity HD Opus audio settings (stereo, 64kbps, Forward Error Correction)
 function preferOpusHd(sdp: string): string {
   const lines = sdp.split('\r\n');
   let opusPayloadType: string | null = null;
@@ -34,7 +46,8 @@ function preferOpusHd(sdp: string): string {
       let fmtp = lines[i];
       if (!fmtp.includes('stereo=1')) fmtp += ';stereo=1';
       if (!fmtp.includes('sprop-stereo=1')) fmtp += ';sprop-stereo=1';
-      if (!fmtp.includes('maxaveragebitrate=')) fmtp += ';maxaveragebitrate=128000';
+      // Balanced 64kbps audio provides transparent voice quality while preventing network queue congestion
+      if (!fmtp.includes('maxaveragebitrate=')) fmtp += ';maxaveragebitrate=64000';
       if (!fmtp.includes('useinbandfec=1')) fmtp += ';useinbandfec=1';
       
       // Low Latency / Real-Time settings
@@ -47,6 +60,29 @@ function preferOpusHd(sdp: string): string {
   }
   
   return lines.join('\r\n');
+}
+
+// Helper to limit video sender bitrate to prevent congestion on slower connections
+function applyBitrateLimits(pc: RTCPeerConnection) {
+  setTimeout(() => {
+    pc.getSenders().forEach((sender) => {
+      if (sender.track && sender.track.kind === 'video') {
+        try {
+          const parameters = sender.getParameters();
+          if (!parameters.encodings) {
+            parameters.encodings = [{}];
+          }
+          // Cap video bitrate at 500kbps to keep the stream highly fluid and responsive
+          parameters.encodings[0].maxBitrate = 500000;
+          sender.setParameters(parameters)
+            .then(() => console.log('[WebRTC] Set video maxBitrate to 500kbps'))
+            .catch((err) => console.warn('[WebRTC] Failed to set video bitrate parameter:', err));
+        } catch (e) {
+          console.warn('[WebRTC] Error setting bitrate parameters:', e);
+        }
+      }
+    });
+  }, 1000); // Small delay to ensure negotiation is completed
 }
 
 export interface PeerInfo {
@@ -122,8 +158,8 @@ export const useWebRTC = (roomId: string, userName: string, userId: string) => {
           ? { deviceId: { exact: audioId }, echoCancellation: true, noiseSuppression: true, autoGainControl: true } 
           : { echoCancellation: true, noiseSuppression: true, autoGainControl: true },
         video: videoId 
-          ? { deviceId: { exact: videoId }, width: { ideal: 960 }, height: { ideal: 540 }, frameRate: { max: 24 } } 
-          : { width: { ideal: 960 }, height: { ideal: 540 }, frameRate: { max: 24 } },
+          ? { deviceId: { exact: videoId }, width: { ideal: 640 }, height: { ideal: 360 }, frameRate: { ideal: 15, max: 20 } } 
+          : { width: { ideal: 640 }, height: { ideal: 360 }, frameRate: { ideal: 15, max: 20 } },
       };
 
       const stream = await navigator.mediaDevices.getUserMedia(constraints);
@@ -275,6 +311,9 @@ export const useWebRTC = (roomId: string, userName: string, userId: string) => {
         pc.addTrack(track, localStreamRef.current!);
       });
     }
+
+    // Apply video bitrate limits to prevent congestion
+    applyBitrateLimits(pc);
 
     return pc;
   }, []);
@@ -479,7 +518,7 @@ export const useWebRTC = (roomId: string, userName: string, userId: string) => {
         // Switch back to normal camera video track
         setIsScreenSharing(false);
         const originalStream = await navigator.mediaDevices.getUserMedia({
-          video: { width: { ideal: 1280 }, height: { ideal: 720 } },
+          video: { width: { ideal: 640 }, height: { ideal: 360 } },
         });
 
         const newVideoTrack = originalStream.getVideoTracks()[0];
@@ -498,6 +537,7 @@ export const useWebRTC = (roomId: string, userName: string, userId: string) => {
           if (videoSender) {
             videoSender.replaceTrack(newVideoTrack);
           }
+          applyBitrateLimits(pc);
         }
         
         setIsCameraOff(false);
@@ -523,6 +563,7 @@ export const useWebRTC = (roomId: string, userName: string, userId: string) => {
           if (videoSender) {
             videoSender.replaceTrack(screenTrack);
           }
+          applyBitrateLimits(pc);
         }
 
         setIsScreenSharing(true);
