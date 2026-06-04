@@ -277,16 +277,19 @@ export const useWebRTC = (roomId: string, userName: string, userId: string) => {
     // Handle remote tracks addition
     pc.ontrack = (event) => {
       console.log('[WebRTC] Received remote track:', event.track.kind);
-      if (event.streams && event.streams[0]) {
-        setRemoteStream(event.streams[0]);
-      } else {
-        // Fallback for single track
-        setRemoteStream((prev) => {
+      setRemoteStream((prev) => {
+        const streams = event.streams;
+        if (streams && streams[0]) {
+          // Creating a new MediaStream ensures React detects the state change 
+          // when multiple tracks (audio then video) arrive at different times
+          return new MediaStream(streams[0].getTracks());
+        } else {
+          // Fallback for single track
           const stream = prev || new MediaStream();
           stream.addTrack(event.track);
-          return stream;
-        });
-      }
+          return new MediaStream(stream.getTracks());
+        }
+      });
     };
 
     // Handle remote DataChannel negotiation

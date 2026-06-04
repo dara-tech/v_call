@@ -73,6 +73,10 @@ export const CallRoom: React.FC<CallRoomProps> = ({
   useEffect(() => {
     if (remoteVideoRef.current && remoteStream) {
       remoteVideoRef.current.srcObject = remoteStream;
+      // Explicitly call play to ensure video isn't stuck on black frame
+      remoteVideoRef.current.play().catch((err) => {
+        console.warn('[WebRTC] Auto-play was prevented by the browser:', err);
+      });
     }
   }, [remoteStream]);
 
