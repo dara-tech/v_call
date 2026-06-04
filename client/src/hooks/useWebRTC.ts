@@ -11,16 +11,14 @@ const ICE_SERVERS: RTCConfiguration = {
     { urls: 'stun:stun2.l.google.com:19302' },
     { urls: 'stun:stun.cloudflare.com:3478' },
     { urls: 'stun:global.stun.twilio.com:3478' },
-    // Free TURN/STUN relays from Metered.ca (Open Relay Project) to bypass symmetric NATs and restrictive firewalls
+    // Self-hosted completely FREE Coturn server running on your VPS
     {
       urls: [
-        'turn:openrelay.metered.ca:80',
-        'turn:openrelay.metered.ca:443',
-        'turn:openrelay.metered.ca:443?transport=tcp',
-        'turns:openrelay.metered.ca:443?transport=tcp'
+        'turn:107.175.91.211:3478',
+        'turn:107.175.91.211:3478?transport=tcp'
       ],
-      username: 'openrelayproject',
-      credential: 'openrelayproject'
+      username: 'vcall_user',
+      credential: 'vcall_password'
     }
   ],
   bundlePolicy: 'max-bundle',
@@ -659,11 +657,15 @@ export const useWebRTC = (roomId: string, userName: string, userId: string) => {
       else if (signalData.type === 'sdp-answer') {
         console.log('[WebRTC] Received SDP Answer from:', senderSocketId);
         if (pc) {
-          try {
-            await pc.setRemoteDescription(new RTCSessionDescription(signalData.sdp));
-            startDiagnostics();
-          } catch (err) {
-            console.error('[WebRTC] Error setting remote answer:', err);
+          if (pc.signalingState !== 'stable') {
+            try {
+              await pc.setRemoteDescription(new RTCSessionDescription(signalData.sdp));
+              startDiagnostics();
+            } catch (err) {
+              console.error('[WebRTC] Error setting remote answer:', err);
+            }
+          } else {
+            console.warn('[WebRTC] Ignored SDP answer because signaling state is already stable. This is normal during simultaneous ICE restarts.');
           }
         }
       } 
