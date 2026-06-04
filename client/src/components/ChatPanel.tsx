@@ -2,19 +2,19 @@ import React, { useState, useRef, useEffect } from 'react';
 import { Button } from '@/components/ui/button';
 import { Input } from '@/components/ui/input';
 import { ScrollArea } from '@/components/ui/scroll-area';
-import type { ChatMessage, PeerInfo } from '../hooks/useWebRTC';
+import type { ChatMessage, PeerState } from '../hooks/useWebRTC';
 import { Send, Users, MessageSquare } from 'lucide-react';
 
 interface ChatPanelProps {
   messages: ChatMessage[];
-  remotePeer: PeerInfo | null;
+  peers: PeerState[];
   selfName: string;
   onSendMessage: (text: string) => void;
 }
 
 export const ChatPanel: React.FC<ChatPanelProps> = ({
   messages,
-  remotePeer,
+  peers,
   selfName,
   onSendMessage,
 }) => {
@@ -51,7 +51,7 @@ export const ChatPanel: React.FC<ChatPanelProps> = ({
           className={`flex-1 py-3 text-xs font-semibold flex items-center justify-center gap-1.5 border-b-2 transition-all ${activeTab === 'users' ? 'border-brand-violet text-white bg-zinc-900/40' : 'border-transparent text-zinc-400 hover:text-zinc-200'}`}
         >
           <Users className="size-3.5" />
-          Participants ({remotePeer ? 2 : 1})
+          Participants ({peers.length + 1})
         </button>
       </div>
 
@@ -119,17 +119,19 @@ export const ChatPanel: React.FC<ChatPanelProps> = ({
             </div>
 
             {/* User Row (Remote Peer) */}
-            {remotePeer ? (
-              <div className="flex items-center justify-between p-2.5 rounded-md border border-zinc-800/60 bg-zinc-900/30">
-                <div className="flex items-center gap-2">
-                  <span className="size-2 bg-brand-emerald rounded-full" />
-                  <span className="text-xs font-medium text-zinc-200">{remotePeer.userName}</span>
+            {peers.length > 0 ? (
+              peers.map((peer) => (
+                <div key={peer.info.socketId} className="flex items-center justify-between p-2.5 rounded-md border border-zinc-800/60 bg-zinc-900/30">
+                  <div className="flex items-center gap-2">
+                    <span className="size-2 bg-brand-emerald rounded-full" />
+                    <span className="text-xs font-medium text-zinc-200">{peer.info.userName}</span>
+                  </div>
+                  <span className="text-[9px] font-mono bg-zinc-800 text-zinc-400 px-1.5 py-0.5 rounded">Peer</span>
                 </div>
-                <span className="text-[9px] font-mono bg-zinc-800 text-zinc-400 px-1.5 py-0.5 rounded">Peer</span>
-              </div>
+              ))
             ) : (
               <div className="p-4 rounded-md border border-dashed border-zinc-800 text-center text-zinc-500 text-xs">
-                Waiting for remote peer to connect...
+                Waiting for remote peers to connect...
               </div>
             )}
           </div>

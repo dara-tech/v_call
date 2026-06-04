@@ -1,12 +1,12 @@
-import React, { useEffect, useRef, useState } from 'react';
-import { useWebRTC } from '../hooks/useWebRTC';
+import React, { useEffect, useRef, useState, useMemo } from 'react';
+import { useWebRTC, PeerState } from '../hooks/useWebRTC';
 import { Toolbar } from './Toolbar';
 import { Diagnostics } from './Diagnostics';
 import { ChatPanel } from './ChatPanel';
 import { DeviceSelect } from './DeviceSelect';
 import { Dialog, DialogContent, DialogHeader, DialogTitle } from '@/components/ui/dialog';
 import { Button } from '@/components/ui/button';
-import { MicOff, VideoOff, Settings, Link } from 'lucide-react';
+import { MicOff, VideoOff, Settings, Link, Users } from 'lucide-react';
 
 interface CallRoomProps {
   roomId: string;
@@ -16,6 +16,43 @@ interface CallRoomProps {
   initialVideoId: string;
   onLeave: () => void;
 }
+
+// Sub-component for remote peer video to handle its own stream binding
+const RemotePeerVideo: React.FC<{ peer: PeerState }> = ({ peer }) => {
+  const videoRef = useRef<HTMLVideoElement>(null);
+
+  useEffect(() => {
+    if (videoRef.current && peer.stream) {
+      videoRef.current.srcObject = peer.stream;
+      videoRef.current.play().catch((err) => {
+        console.warn('[WebRTC] Auto-play was prevented by the browser:', err);
+      });
+    }
+  }, [peer.stream]);
+
+  return (
+    <div className="relative w-full h-full bg-zinc-900/40 flex items-center justify-center overflow-hidden border border-zinc-900 rounded-lg shadow-lg">
+      {peer.stream ? (
+        <video
+          ref={videoRef}
+          autoPlay
+          playsInline
+          className="w-full h-full object-cover"
+        />
+      ) : (
+        <div className="flex flex-col items-center justify-center text-zinc-600 gap-2">
+          <div className="size-10 rounded-full bg-zinc-950 flex items-center justify-center border border-zinc-800">
+            <Users className="size-5 text-zinc-500" />
+          </div>
+          <span className="text-xs">Connecting...</span>
+        </div>
+      )}
+      <div className="absolute top-4 left-4 bg-zinc-950/70 border border-zinc-800/80 px-2.5 py-1 rounded text-xs font-medium text-zinc-300 backdrop-blur-sm z-10 shadow-sm">
+        {peer.info.userName}
+      </div>
+    </div>
+  );
+};
 
 export const CallRoom: React.FC<CallRoomProps> = ({
   roomId,
@@ -28,9 +65,7 @@ export const CallRoom: React.FC<CallRoomProps> = ({
   // Instantiate WebRTC Hook
   const {
     localStream,
-    remoteStream,
-    remotePeer,
-    connectionState,
+    peers,
     isMuted,
     isCameraOff,
     isScreenSharing,
@@ -55,7 +90,6 @@ export const CallRoom: React.FC<CallRoomProps> = ({
 
   // Video element references
   const localVideoRef = useRef<HTMLVideoElement>(null);
-  const remoteVideoRef = useRef<HTMLVideoElement>(null);
 
   // Initialize media devices once in call room
   useEffect(() => {
@@ -68,17 +102,6 @@ export const CallRoom: React.FC<CallRoomProps> = ({
       localVideoRef.current.srcObject = localStream;
     }
   }, [localStream, isCameraOff]);
-
-  // Bind remote video stream to element
-  useEffect(() => {
-    if (remoteVideoRef.current && remoteStream) {
-      remoteVideoRef.current.srcObject = remoteStream;
-      // Explicitly call play to ensure video isn't stuck on black frame
-      remoteVideoRef.current.play().catch((err) => {
-        console.warn('[WebRTC] Auto-play was prevented by the browser:', err);
-      });
-    }
-  }, [remoteStream]);
 
   // Handle unread messages count
   useEffect(() => {
@@ -115,6 +138,19 @@ export const CallRoom: React.FC<CallRoomProps> = ({
     onLeave();
   };
 
+  const peerList = Object.values(peers);
+  const hasPeers = peerList.length > 0;
+
+  // Calculate dynamic grid columns based on participant count
+  const gridLayoutClass = useMemo(() => {
+    const totalCount = peerList.length; 
+    if (totalCount === 1) return "grid-cols-1";
+    if (totalCount === 2) return "grid-cols-1 sm:grid-cols-2";
+    if (totalCount <= 4) return "grid-cols-2";
+    if (totalCount <= 6) return "grid-cols-2 sm:grid-cols-3";
+    return "grid-cols-3 sm:grid-cols-4";
+  }, [peerList.length]);
+
   return (
     <div className="flex flex-col h-screen w-screen overflow-hidden bg-zinc-950 font-sans text-zinc-300 relative">
       
@@ -142,8 +178,8 @@ export const CallRoom: React.FC<CallRoomProps> = ({
         {/* Central State / Latency Tag */}
         <div className="hidden sm:flex items-center gap-4">
           <div className="flex items-center gap-2 bg-zinc-900/60 border border-zinc-800/80 px-2.5 py-1 rounded text-[10px]">
-            <span className={`size-1.5 rounded-full ${connectionState === 'connected' ? 'bg-brand-emerald animate-pulse' : 'bg-amber-500'}`} />
-            <span className="font-mono text-zinc-400 uppercase">{connectionState}</span>
+            <span className={`size-1.5 rounded-full ${stats.connectionState === 'connected' ? 'bg-brand-emerald animate-pulse' : 'bg-amber-500'}`} />
+            <span className="font-mono text-zinc-400 uppercase">{hasPeers ? stats.connectionState : 'WAITING'}</span>
           </div>
           {stats.latency > 0 && (
             <div className="text-[10px] text-zinc-400">
@@ -169,77 +205,67 @@ export const CallRoom: React.FC<CallRoomProps> = ({
       <div className="flex-1 flex overflow-hidden">
         
         {/* Video Area Grid */}
-        <div className="flex-1 flex flex-col items-center justify-center p-6 relative bg-zinc-950">
+        <div className="flex-1 flex flex-col p-4 relative bg-zinc-950 overflow-y-auto">
           
-          {/* Main Video Panel */}
-          <div className="relative w-full h-full max-w-5xl max-h-[80vh] bg-zinc-900/40 border border-zinc-900 rounded-lg overflow-hidden flex items-center justify-center">
-            
-            {/* Remote Stream Video */}
-            {remoteStream ? (
-              <video
-                ref={remoteVideoRef}
-                autoPlay
-                playsInline
-                className="w-full h-full object-cover"
-              />
-            ) : (
-              // Lobby placeholder when waiting
+          {hasPeers ? (
+             <div className={`w-full h-full max-w-7xl mx-auto grid gap-4 ${gridLayoutClass} auto-rows-fr`}>
+                {peerList.map((peer) => (
+                  <RemotePeerVideo key={peer.info.socketId} peer={peer} />
+                ))}
+             </div>
+          ) : (
+            // Lobby placeholder when waiting
+            <div className="w-full h-full flex flex-col items-center justify-center">
               <div className="flex flex-col items-center gap-4 text-center p-8 max-w-sm">
                 <div className="size-12 rounded-full border border-dashed border-zinc-700 flex items-center justify-center animate-spin border-t-zinc-400" />
                 <div className="space-y-1">
-                  <h3 className="text-sm font-semibold text-zinc-200">Waiting for peer...</h3>
+                  <h3 className="text-sm font-semibold text-zinc-200">Waiting for participants...</h3>
                   <p className="text-xs text-zinc-500 leading-normal">
-                    Share your room code <span className="font-mono bg-zinc-900 px-1 py-0.5 border border-zinc-800 rounded">{roomId}</span> with someone to start the call.
+                    Share your room code <span className="font-mono bg-zinc-900 px-1 py-0.5 border border-zinc-800 rounded">{roomId}</span> with someone to start the group call.
                   </p>
                 </div>
               </div>
+            </div>
+          )}
+
+          {/* Local Video Picture-in-Picture Frame (PIP) */}
+          <div className="absolute bottom-24 right-4 z-30 w-40 sm:w-48 aspect-video bg-zinc-950 border border-zinc-800 rounded-md overflow-hidden shadow-2xl transition-transform hover:scale-105 group">
+            {localStream && !isCameraOff ? (
+              <video
+                ref={localVideoRef}
+                autoPlay
+                playsInline
+                muted
+                className="w-full h-full object-cover scale-x-[-1]"
+              />
+            ) : (
+              <div className="w-full h-full flex flex-col items-center justify-center gap-1.5 text-zinc-600 bg-zinc-950">
+                <VideoOff className="size-5" />
+                <span className="text-[9px]">Camera disabled</span>
+              </div>
             )}
 
-            {/* Video Overlays */}
-            <div className="absolute top-4 left-4 bg-zinc-950/70 border border-zinc-800/80 px-2.5 py-1 rounded text-xs font-medium text-zinc-300 backdrop-blur-sm">
-              {remotePeer ? remotePeer.userName : 'Remote User'}
-            </div>
-
-            {/* Local Video Picture-in-Picture Frame (PIP) */}
-            <div className="absolute bottom-4 right-4 w-40 sm:w-48 aspect-video bg-zinc-950 border border-zinc-800 rounded-md overflow-hidden shadow-2xl transition-transform hover:scale-105 group">
-              {localStream && !isCameraOff ? (
-                <video
-                  ref={localVideoRef}
-                  autoPlay
-                  playsInline
-                  muted
-                  className="w-full h-full object-cover scale-x-[-1]"
-                />
-              ) : (
-                <div className="w-full h-full flex flex-col items-center justify-center gap-1.5 text-zinc-600 bg-zinc-950">
-                  <VideoOff className="size-5" />
-                  <span className="text-[9px]">Camera disabled</span>
-                </div>
-              )}
-
-              {/* Local mute icons indicators */}
-              {isMuted && (
-                <div className="absolute top-2 right-2 size-5 bg-brand-rose text-white flex items-center justify-center rounded-full shadow-md">
-                  <MicOff className="size-3" />
-                </div>
-              )}
-
-              <div className="absolute bottom-2 left-2 bg-black/60 backdrop-blur-sm px-1.5 py-0.5 rounded text-[8px] text-zinc-400 font-mono">
-                You ({userName})
+            {/* Local mute icons indicators */}
+            {isMuted && (
+              <div className="absolute top-2 right-2 size-5 bg-brand-rose text-white flex items-center justify-center rounded-full shadow-md">
+                <MicOff className="size-3" />
               </div>
-            </div>
+            )}
 
+            <div className="absolute bottom-2 left-2 bg-black/60 backdrop-blur-sm px-1.5 py-0.5 rounded text-[8px] text-zinc-400 font-mono">
+              You ({userName})
+            </div>
           </div>
 
           {/* Floating Call Quality Diagnostics display */}
-          {showStats && (
+          {showStats && hasPeers && (
             <div className="absolute top-6 right-6 z-20">
               <Diagnostics stats={stats} />
             </div>
           )}
 
           {/* Bottom Floating Control Bar */}
-          <div className="absolute bottom-8 left-1/2 -translate-x-1/2">
+          <div className="absolute bottom-8 left-1/2 -translate-x-1/2 z-40">
             <Toolbar
               isMuted={isMuted}
               isCameraOff={isCameraOff}
@@ -263,7 +289,7 @@ export const CallRoom: React.FC<CallRoomProps> = ({
           <div className="h-full shrink-0 flex">
             <ChatPanel
               messages={chatMessages}
-              remotePeer={remotePeer}
+              peers={peerList}
               selfName={userName}
               onSendMessage={sendChatMessage}
             />

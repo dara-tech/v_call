@@ -92,6 +92,13 @@ export interface PeerInfo {
   userName: string;
 }
 
+export interface PeerState {
+  info: PeerInfo;
+  stream: MediaStream | null;
+  pc: RTCPeerConnection;
+  dataChannel: RTCDataChannel | null;
+}
+
 export interface ChatMessage {
   id: string;
   sender: 'self' | 'remote';
@@ -112,9 +119,10 @@ export interface CallStats {
 
 export const useWebRTC = (roomId: string, userName: string, userId: string) => {
   const [localStream, setLocalStream] = useState<MediaStream | null>(null);
-  const [remoteStream, setRemoteStream] = useState<MediaStream | null>(null);
-  const [remotePeer, setRemotePeer] = useState<PeerInfo | null>(null);
-  const [connectionState, setConnectionState] = useState<RTCPeerConnectionState>('new');
+  
+  // Replace single remoteStream with multiple peers
+  const [peers, setPeers] = useState<Record<string, PeerState>>({});
+  
   const [isMuted, setIsMuted] = useState(false);
   const [isCameraOff, setIsCameraOff] = useState(false);
   const [isScreenSharing, setIsScreenSharing] = useState(false);
@@ -123,7 +131,7 @@ export const useWebRTC = (roomId: string, userName: string, userId: string) => {
   // Chat state
   const [chatMessages, setChatMessages] = useState<ChatMessage[]>([]);
   
-  // Real-time call quality diagnostics
+  // Real-time call quality diagnostics (aggregated or first peer)
   const [stats, setStats] = useState<CallStats>({
     latency: 0,
     bitrateIn: 0,
@@ -136,15 +144,19 @@ export const useWebRTC = (roomId: string, userName: string, userId: string) => {
 
   // Refs to hold WebRTC/Socket state without triggering re-renders
   const socketRef = useRef<Socket | null>(null);
-  const pcRef = useRef<RTCPeerConnection | null>(null);
+  const peersRef = useRef<Record<string, PeerState>>({});
   const localStreamRef = useRef<MediaStream | null>(null);
-  const dataChannelRef = useRef<RTCDataChannel | null>(null);
   const statsIntervalRef = useRef<number | null>(null);
   
-  // Track previous stat bytes to calculate bitrates
-  const prevBytesReceived = useRef<number>(0);
-  const prevBytesSent = useRef<number>(0);
+  // Track previous stat bytes to calculate bitrates (aggregate)
+  const prevBytesReceived = useRef<Record<string, number>>({});
+  const prevBytesSent = useRef<Record<string, number>>({});
   const prevTimestamp = useRef<number>(0);
+
+  // Helper to safely update peers state from ref
+  const syncPeersState = useCallback(() => {
+    setPeers({ ...peersRef.current });
+  }, []);
 
   // Initialize Local Media (Camera/Mic)
   const initLocalMedia = useCallback(async (audioId?: string, videoId?: string) => {
@@ -167,18 +179,19 @@ export const useWebRTC = (roomId: string, userName: string, userId: string) => {
       localStreamRef.current = stream;
       setLocalStream(stream);
 
-      // If peer connection exists, replace the tracks
-      if (pcRef.current) {
-        const senders = pcRef.current.getSenders();
+      // If peer connections exist, replace the tracks on all of them
+      Object.values(peersRef.current).forEach((peer) => {
+        const senders = peer.pc.getSenders();
         stream.getTracks().forEach((track) => {
           const sender = senders.find((s) => s.track?.kind === track.kind);
           if (sender) {
             sender.replaceTrack(track);
           } else {
-            pcRef.current?.addTrack(track, stream);
+            peer.pc.addTrack(track, stream);
           }
         });
-      }
+      });
+      
       setIsMediaReady(true);
       return stream;
     } catch (error) {
@@ -188,11 +201,14 @@ export const useWebRTC = (roomId: string, userName: string, userId: string) => {
   }, []);
 
   // Setup Data Channel for Chat & Reactions
-  const setupDataChannel = (channel: RTCDataChannel) => {
-    dataChannelRef.current = channel;
+  const setupDataChannel = (channel: RTCDataChannel, targetSocketId: string, remoteUserName: string) => {
+    if (peersRef.current[targetSocketId]) {
+      peersRef.current[targetSocketId].dataChannel = channel;
+      syncPeersState();
+    }
 
     channel.onopen = () => {
-      console.log('[DataChannel] Opened');
+      console.log(`[DataChannel] Opened for ${remoteUserName}`);
     };
 
     channel.onmessage = (event) => {
@@ -204,7 +220,7 @@ export const useWebRTC = (roomId: string, userName: string, userId: string) => {
             {
               id: data.id || Math.random().toString(36).substr(2, 9),
               sender: 'remote',
-              senderName: remotePeer?.userName || 'Remote',
+              senderName: remoteUserName || 'Remote',
               text: data.text,
               timestamp: new Date(),
             },
@@ -216,11 +232,11 @@ export const useWebRTC = (roomId: string, userName: string, userId: string) => {
     };
 
     channel.onclose = () => {
-      console.log('[DataChannel] Closed');
+      console.log(`[DataChannel] Closed for ${remoteUserName}`);
     };
   };
 
-  // Send a text message over WebRTC Data Channel
+  // Send a text message over WebRTC Data Channels to ALL peers
   const sendChatMessage = useCallback((text: string) => {
     if (!text.trim()) return;
 
@@ -243,57 +259,67 @@ export const useWebRTC = (roomId: string, userName: string, userId: string) => {
       },
     ]);
 
-    // Send via DataChannel if open
-    if (dataChannelRef.current && dataChannelRef.current.readyState === 'open') {
-      dataChannelRef.current.send(JSON.stringify(messagePayload));
-    } else {
-      console.warn('[WebRTC] DataChannel not open, message not sent to peer');
-    }
+    // Send via all open DataChannels
+    Object.values(peersRef.current).forEach((peer) => {
+      if (peer.dataChannel && peer.dataChannel.readyState === 'open') {
+        peer.dataChannel.send(JSON.stringify(messagePayload));
+      } else {
+        console.warn(`[WebRTC] DataChannel not open for ${peer.info.userName}, message not sent`);
+      }
+    });
   }, [userName]);
 
   // Create Peer Connection
-  const createPeerConnection = useCallback((targetSocketId: string): RTCPeerConnection => {
+  const createPeerConnection = useCallback((targetInfo: PeerInfo): RTCPeerConnection => {
+    const { socketId: targetSocketId, userName: targetUserName } = targetInfo;
     console.log('[WebRTC] Creating Peer Connection for target:', targetSocketId);
     
     const pc = new RTCPeerConnection(ICE_SERVERS);
-    pcRef.current = pc;
+    
+    // Create placeholder in peers map
+    peersRef.current[targetSocketId] = {
+      info: targetInfo,
+      pc,
+      stream: null,
+      dataChannel: null
+    };
+    syncPeersState();
 
     // Handle connection state changes
     pc.onconnectionstatechange = () => {
-      console.log('[WebRTC] Connection State changed to:', pc.connectionState);
-      setConnectionState(pc.connectionState);
-      
+      console.log(`[WebRTC] Connection State with ${targetUserName} changed to:`, pc.connectionState);
       if (pc.connectionState === 'failed') {
         handleIceRestart(targetSocketId);
       }
     };
 
     pc.oniceconnectionstatechange = () => {
-      setStats((prev) => ({ ...prev, connectionState: pc.iceConnectionState }));
+      // Just update stats for now, no need to force full state sync just for ICE state
     };
 
     // Handle remote tracks addition
     pc.ontrack = (event) => {
-      console.log('[WebRTC] Received remote track:', event.track.kind);
-      setRemoteStream((prev) => {
+      console.log(`[WebRTC] Received remote track (${event.track.kind}) from ${targetUserName}`);
+      
+      const peer = peersRef.current[targetSocketId];
+      if (peer) {
         const streams = event.streams;
         if (streams && streams[0]) {
-          // Creating a new MediaStream ensures React detects the state change 
-          // when multiple tracks (audio then video) arrive at different times
-          return new MediaStream(streams[0].getTracks());
+          peer.stream = new MediaStream(streams[0].getTracks());
         } else {
           // Fallback for single track
-          const stream = prev || new MediaStream();
+          const stream = peer.stream || new MediaStream();
           stream.addTrack(event.track);
-          return new MediaStream(stream.getTracks());
+          peer.stream = new MediaStream(stream.getTracks());
         }
-      });
+        syncPeersState();
+      }
     };
 
     // Handle remote DataChannel negotiation
     pc.ondatachannel = (e) => {
-      console.log('[WebRTC] Received remote DataChannel');
-      setupDataChannel(e.channel);
+      console.log(`[WebRTC] Received remote DataChannel from ${targetUserName}`);
+      setupDataChannel(e.channel, targetSocketId, targetUserName);
     };
 
     // Send local ICE candidates to peer
@@ -320,24 +346,24 @@ export const useWebRTC = (roomId: string, userName: string, userId: string) => {
     applyBitrateLimits(pc);
 
     return pc;
-  }, []);
+  }, [syncPeersState]);
 
   // Initiate a WebRTC connection (Offer)
-  const initiateCall = useCallback(async (targetSocketId: string) => {
+  const initiateCall = useCallback(async (targetInfo: PeerInfo) => {
     try {
-      const pc = createPeerConnection(targetSocketId);
+      const pc = createPeerConnection(targetInfo);
 
       // Setup local DataChannel
       const dataChannel = pc.createDataChannel('chat-channel');
-      setupDataChannel(dataChannel);
+      setupDataChannel(dataChannel, targetInfo.socketId, targetInfo.userName);
 
       const offer = await pc.createOffer();
       const hdOffer = { type: offer.type, sdp: preferOpusHd(offer.sdp || '') };
       await pc.setLocalDescription(hdOffer);
 
-      console.log('[WebRTC] Sending SDP Offer to:', targetSocketId);
+      console.log('[WebRTC] Sending SDP Offer to:', targetInfo.socketId);
       socketRef.current?.emit('relay-signal', {
-        targetSocketId,
+        targetSocketId: targetInfo.socketId,
         signalData: {
           type: 'sdp-offer',
           sdp: hdOffer,
@@ -350,12 +376,13 @@ export const useWebRTC = (roomId: string, userName: string, userId: string) => {
 
   // Handle ICE Restart on connection failure
   const handleIceRestart = async (targetSocketId: string) => {
-    if (!pcRef.current) return;
+    const peer = peersRef.current[targetSocketId];
+    if (!peer || !peer.pc) return;
     try {
-      console.log('[WebRTC] Connection failed, initiating ICE Restart...');
-      const offer = await pcRef.current.createOffer({ iceRestart: true });
+      console.log(`[WebRTC] Connection failed with ${targetSocketId}, initiating ICE Restart...`);
+      const offer = await peer.pc.createOffer({ iceRestart: true });
       const hdOffer = { type: offer.type, sdp: preferOpusHd(offer.sdp || '') };
-      await pcRef.current.setLocalDescription(hdOffer);
+      await peer.pc.setLocalDescription(hdOffer);
 
       socketRef.current?.emit('relay-signal', {
         targetSocketId,
@@ -369,97 +396,102 @@ export const useWebRTC = (roomId: string, userName: string, userId: string) => {
     }
   };
 
-  // Monitor WebRTC Quality stats
+  // Monitor WebRTC Quality stats (aggregate over all peers)
   const startDiagnostics = useCallback(() => {
     if (statsIntervalRef.current) clearInterval(statsIntervalRef.current);
 
     statsIntervalRef.current = window.setInterval(async () => {
-      const pc = pcRef.current;
-      if (!pc || pc.connectionState !== 'connected') return;
+      const allPeers = Object.values(peersRef.current);
+      if (allPeers.length === 0) return;
 
-      try {
-        const reports = await pc.getStats();
-        let latency = 0;
-        let bitrateIn = 0;
-        let bitrateOut = 0;
-        let packetLoss = 0;
-        let fps = 0;
-        let resolution = '0x0';
+      let totalLatency = 0;
+      let totalBitrateIn = 0;
+      let totalBitrateOut = 0;
+      let maxPacketLoss = 0;
+      let minFps = 60;
+      let resolution = '0x0';
+      let activeConnections = 0;
+      let overallConnectionState = 'new';
 
-        reports.forEach((report) => {
-          const now = report.timestamp;
-          const delta = (now - prevTimestamp.current) / 1000; // in seconds
+      for (const peer of allPeers) {
+        const pc = peer.pc;
+        if (!pc || pc.connectionState !== 'connected') continue;
+        
+        overallConnectionState = pc.iceConnectionState;
+        activeConnections++;
+        const targetSocketId = peer.info.socketId;
 
-          // 1. Latency (Round Trip Time) from candidate-pair
-          if (report.type === 'candidate-pair' && report.state === 'succeeded') {
-            if (report.currentRoundTripTime) {
-              latency = Math.round(report.currentRoundTripTime * 1000); // convert to ms
+        try {
+          const reports = await pc.getStats();
+          reports.forEach((report) => {
+            const now = report.timestamp;
+            const delta = (now - prevTimestamp.current) / 1000; // in seconds
+
+            if (report.type === 'candidate-pair' && report.state === 'succeeded') {
+              if (report.currentRoundTripTime) {
+                totalLatency += Math.round(report.currentRoundTripTime * 1000);
+              }
             }
-          }
 
-          // 2. Incoming stream stats (Bitrate & Packet Loss & Resolution)
-          if (report.type === 'inbound-rtp' && report.kind === 'video') {
-            packetLoss = report.packetsLost || 0;
-            fps = Math.round(report.framesPerSecond || 0);
-            resolution = `${report.frameWidth || 0}x${report.frameHeight || 0}`;
+            if (report.type === 'inbound-rtp' && report.kind === 'video') {
+              maxPacketLoss = Math.max(maxPacketLoss, report.packetsLost || 0);
+              minFps = Math.min(minFps, Math.round(report.framesPerSecond || 60));
+              resolution = `${report.frameWidth || 0}x${report.frameHeight || 0}`;
 
-            if (delta > 0 && report.bytesReceived !== undefined) {
-              const bytes = report.bytesReceived - prevBytesReceived.current;
-              bitrateIn = Math.round((bytes * 8) / 1000 / delta); // kbps
-              prevBytesReceived.current = report.bytesReceived;
+              if (delta > 0 && report.bytesReceived !== undefined) {
+                const prevBytes = prevBytesReceived.current[targetSocketId] || 0;
+                const bytes = report.bytesReceived - prevBytes;
+                totalBitrateIn += Math.round((bytes * 8) / 1000 / delta);
+                prevBytesReceived.current[targetSocketId] = report.bytesReceived;
+              }
             }
-          }
 
-          // 3. Outgoing stream stats
-          if (report.type === 'outbound-rtp' && report.kind === 'video') {
-            if (delta > 0 && report.bytesSent !== undefined) {
-              const bytes = report.bytesSent - prevBytesSent.current;
-              bitrateOut = Math.round((bytes * 8) / 1000 / delta); // kbps
-              prevBytesSent.current = report.bytesSent;
+            if (report.type === 'outbound-rtp' && report.kind === 'video') {
+              if (delta > 0 && report.bytesSent !== undefined) {
+                const prevBytes = prevBytesSent.current[targetSocketId] || 0;
+                const bytes = report.bytesSent - prevBytes;
+                totalBitrateOut += Math.round((bytes * 8) / 1000 / delta);
+                prevBytesSent.current[targetSocketId] = report.bytesSent;
+              }
             }
-          }
-        });
+          });
+        } catch (err) {
+          console.error('Error fetching WebRTC diagnostics stats:', err);
+        }
+      }
+      
+      prevTimestamp.current = Date.now();
 
-        prevTimestamp.current = Date.now();
-
-        setStats((prev) => ({
-          latency: latency || prev.latency,
-          bitrateIn: bitrateIn >= 0 ? bitrateIn : 0,
-          bitrateOut: bitrateOut >= 0 ? bitrateOut : 0,
-          packetLoss,
-          fps,
+      if (activeConnections > 0) {
+        setStats({
+          latency: Math.round(totalLatency / activeConnections), // average latency
+          bitrateIn: totalBitrateIn >= 0 ? totalBitrateIn : 0, // sum of all incoming
+          bitrateOut: totalBitrateOut >= 0 ? totalBitrateOut : 0, // sum of all outgoing
+          packetLoss: maxPacketLoss, // worst packet loss
+          fps: minFps === 60 ? 0 : minFps, // worst fps
           resolution,
-          connectionState: pc.iceConnectionState,
-        }));
-      } catch (err) {
-        console.error('Error fetching WebRTC diagnostics stats:', err);
+          connectionState: overallConnectionState as any,
+        });
       }
     }, 1000);
   }, []);
 
-  // Clean up Peer Connection
+  // Clean up all Peer Connections
   const cleanUpPC = useCallback(() => {
     if (statsIntervalRef.current) {
       clearInterval(statsIntervalRef.current);
       statsIntervalRef.current = null;
     }
 
-    if (pcRef.current) {
-      console.log('[WebRTC] Closing RTCPeerConnection');
-      pcRef.current.close();
-      pcRef.current = null;
-    }
-
-    if (dataChannelRef.current) {
-      dataChannelRef.current.close();
-      dataChannelRef.current = null;
-    }
-
-    setRemoteStream(null);
-    setRemotePeer(null);
-    setConnectionState('new');
+    Object.values(peersRef.current).forEach((peer) => {
+      if (peer.pc) peer.pc.close();
+      if (peer.dataChannel) peer.dataChannel.close();
+    });
+    
+    peersRef.current = {};
+    syncPeersState();
     setChatMessages([]);
-  }, []);
+  }, [syncPeersState]);
 
   // Leave Call Room
   const leaveCall = useCallback(() => {
@@ -514,7 +546,6 @@ export const useWebRTC = (roomId: string, userName: string, userId: string) => {
 
   // Toggle Screen Share
   const toggleScreenShare = useCallback(async () => {
-    const pc = pcRef.current;
     if (!localStreamRef.current) return;
 
     try {
@@ -535,14 +566,14 @@ export const useWebRTC = (roomId: string, userName: string, userId: string) => {
 
         localStreamRef.current.addTrack(newVideoTrack);
 
-        // Update sender on peer connection
-        if (pc) {
-          const videoSender = pc.getSenders().find((s) => s.track?.kind === 'video');
+        // Update sender on all peer connections
+        Object.values(peersRef.current).forEach((peer) => {
+          const videoSender = peer.pc.getSenders().find((s) => s.track?.kind === 'video');
           if (videoSender) {
             videoSender.replaceTrack(newVideoTrack);
           }
-          applyBitrateLimits(pc);
-        }
+          applyBitrateLimits(peer.pc);
+        });
         
         setIsCameraOff(false);
       } else {
@@ -561,14 +592,14 @@ export const useWebRTC = (roomId: string, userName: string, userId: string) => {
 
         localStreamRef.current.addTrack(screenTrack);
 
-        // Replace track on peer connection
-        if (pc) {
-          const videoSender = pc.getSenders().find((s) => s.track?.kind === 'video');
+        // Replace track on all peer connections
+        Object.values(peersRef.current).forEach((peer) => {
+          const videoSender = peer.pc.getSenders().find((s) => s.track?.kind === 'video');
           if (videoSender) {
             videoSender.replaceTrack(screenTrack);
           }
-          applyBitrateLimits(pc);
-        }
+          applyBitrateLimits(peer.pc);
+        });
 
         setIsScreenSharing(true);
 
@@ -608,37 +639,37 @@ export const useWebRTC = (roomId: string, userName: string, userId: string) => {
     // Handle receiving list of users already in room
     socket.on('all-users', (users: PeerInfo[]) => {
       console.log('[Socket] Room users list received:', users);
-      // Since it's a 1-on-1 call, we take the first user if present
-      if (users.length > 0) {
-        const peer = users[0];
-        setRemotePeer(peer);
-        initiateCall(peer.socketId);
-      }
+      users.forEach((user) => {
+        initiateCall(user);
+      });
     });
 
-    // Handle another user joining
+    // Handle another user joining (wait for them to call us)
     socket.on('user-joined', ({ socketId, userId: remoteId, userName: remoteName }) => {
       console.log('[Socket] Remote peer joined:', remoteName);
-      setRemotePeer({ socketId, userId: remoteId, userName: remoteName });
+      // We don't initiate the call here, we let the joining user call us (to avoid glare)
     });
 
     // Handle receiving signals (Offer, Answer, Candidates)
     socket.on('signal-received', async ({ senderSocketId, signalData }) => {
-      const pc = pcRef.current;
+      let peer = peersRef.current[senderSocketId];
 
       if (signalData.type === 'sdp-offer') {
         console.log('[WebRTC] Received SDP Offer from:', senderSocketId);
-        let activePc = pc;
-
-        if (!activePc) {
-          activePc = createPeerConnection(senderSocketId);
+        
+        if (!peer) {
+          // It's possible we don't have this peer stored yet if they just joined and sent an offer immediately
+          // Create the PeerConnection without initiating (which creates the answer)
+          const targetInfo = { socketId: senderSocketId, userId: 'unknown', userName: 'Remote User' }; // Will be updated if we had real info
+          createPeerConnection(targetInfo);
+          peer = peersRef.current[senderSocketId];
         }
 
         try {
-          await activePc.setRemoteDescription(new RTCSessionDescription(signalData.sdp));
-          const answer = await activePc.createAnswer();
+          await peer.pc.setRemoteDescription(new RTCSessionDescription(signalData.sdp));
+          const answer = await peer.pc.createAnswer();
           const hdAnswer = { type: answer.type, sdp: preferOpusHd(answer.sdp || '') };
-          await activePc.setLocalDescription(hdAnswer);
+          await peer.pc.setLocalDescription(hdAnswer);
 
           socket.emit('relay-signal', {
             targetSocketId: senderSocketId,
@@ -656,24 +687,24 @@ export const useWebRTC = (roomId: string, userName: string, userId: string) => {
       
       else if (signalData.type === 'sdp-answer') {
         console.log('[WebRTC] Received SDP Answer from:', senderSocketId);
-        if (pc) {
-          if (pc.signalingState !== 'stable') {
+        if (peer && peer.pc) {
+          if (peer.pc.signalingState !== 'stable') {
             try {
-              await pc.setRemoteDescription(new RTCSessionDescription(signalData.sdp));
+              await peer.pc.setRemoteDescription(new RTCSessionDescription(signalData.sdp));
               startDiagnostics();
             } catch (err) {
               console.error('[WebRTC] Error setting remote answer:', err);
             }
           } else {
-            console.warn('[WebRTC] Ignored SDP answer because signaling state is already stable. This is normal during simultaneous ICE restarts.');
+            console.warn('[WebRTC] Ignored SDP answer because signaling state is already stable.');
           }
         }
       } 
       
       else if (signalData.type === 'candidate') {
-        if (pc) {
+        if (peer && peer.pc) {
           try {
-            await pc.addIceCandidate(new RTCIceCandidate(signalData.candidate));
+            await peer.pc.addIceCandidate(new RTCIceCandidate(signalData.candidate));
           } catch (err) {
             console.error('[WebRTC] Error adding ICE Candidate:', err);
           }
@@ -684,7 +715,13 @@ export const useWebRTC = (roomId: string, userName: string, userId: string) => {
     // Handle user leaving the room
     socket.on('user-left', ({ socketId }) => {
       console.log('[Socket] Remote peer left room:', socketId);
-      cleanUpPC();
+      const peer = peersRef.current[socketId];
+      if (peer) {
+        if (peer.pc) peer.pc.close();
+        if (peer.dataChannel) peer.dataChannel.close();
+        delete peersRef.current[socketId];
+        syncPeersState();
+      }
     });
 
     return () => {
@@ -694,13 +731,11 @@ export const useWebRTC = (roomId: string, userName: string, userId: string) => {
       }
       cleanUpPC();
     };
-  }, [roomId, isMediaReady, userId, userName, createPeerConnection, initiateCall, cleanUpPC, startDiagnostics]);
+  }, [roomId, isMediaReady, userId, userName, createPeerConnection, initiateCall, cleanUpPC, startDiagnostics, syncPeersState]);
 
   return {
     localStream,
-    remoteStream,
-    remotePeer,
-    connectionState,
+    peers,
     isMuted,
     isCameraOff,
     isScreenSharing,
