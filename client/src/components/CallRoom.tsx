@@ -64,10 +64,10 @@ export const CallRoom: React.FC<CallRoomProps> = ({
 
   // Bind local video stream to element
   useEffect(() => {
-    if (localVideoRef.current && localStream) {
+    if (localVideoRef.current && localStream && !isCameraOff) {
       localVideoRef.current.srcObject = localStream;
     }
-  }, [localStream]);
+  }, [localStream, isCameraOff]);
 
   // Bind remote video stream to element
   useEffect(() => {

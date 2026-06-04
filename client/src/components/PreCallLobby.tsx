@@ -90,6 +90,13 @@ export const PreCallLobby: React.FC<PreCallLobbyProps> = ({ onJoin, defaultRoom 
     };
   }, [selectedAudio, selectedVideo]);
 
+  // Re-bind video element srcObject when it remounts due to isVideoEnabled toggling
+  useEffect(() => {
+    if (videoRef.current && stream && isVideoEnabled) {
+      videoRef.current.srcObject = stream;
+    }
+  }, [stream, isVideoEnabled]);
+
   // Audio level analyzer loop (direct DOM update for high performance)
   const setupAudioMeter = (stream: MediaStream) => {
     try {
