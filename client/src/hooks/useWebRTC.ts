@@ -645,7 +645,7 @@ export const useWebRTC = (roomId: string, userName: string, userId: string) => {
     });
 
     // Handle another user joining (wait for them to call us)
-    socket.on('user-joined', ({ socketId, userId: remoteId, userName: remoteName }) => {
+    socket.on('user-joined', ({ userName: remoteName }) => {
       console.log('[Socket] Remote peer joined:', remoteName);
       // We don't initiate the call here, we let the joining user call us (to avoid glare)
     });

@@ -1,5 +1,6 @@
 import React, { useEffect, useRef, useState, useMemo } from 'react';
-import { useWebRTC, PeerState } from '../hooks/useWebRTC';
+import { useWebRTC } from '../hooks/useWebRTC';
+import type { PeerState } from '../hooks/useWebRTC';
 import { Toolbar } from './Toolbar';
 import { Diagnostics } from './Diagnostics';
 import { ChatPanel } from './ChatPanel';
