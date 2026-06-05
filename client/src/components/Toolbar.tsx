@@ -9,6 +9,7 @@ import {
   MessageSquare,
   Activity,
   PhoneOff,
+  Sparkles,
 } from 'lucide-react';
 import { Tooltip, TooltipContent, TooltipProvider, TooltipTrigger } from '@/components/ui/tooltip';
 
@@ -18,12 +19,14 @@ interface ToolbarProps {
   isScreenSharing: boolean;
   showChat: boolean;
   showStats: boolean;
+  showAI: boolean;
   unreadCount: number;
   onToggleMute: () => void;
   onToggleCamera: () => void;
   onToggleScreenShare: () => void;
   onToggleChat: () => void;
   onToggleStats: () => void;
+  onToggleAI: () => void;
   onLeaveCall: () => void;
 }
 
@@ -33,12 +36,14 @@ export const Toolbar: React.FC<ToolbarProps> = ({
   isScreenSharing,
   showChat,
   showStats,
+  showAI,
   unreadCount,
   onToggleMute,
   onToggleCamera,
   onToggleScreenShare,
   onToggleChat,
   onToggleStats,
+  onToggleAI,
   onLeaveCall,
 }) => {
 
@@ -179,6 +184,24 @@ export const Toolbar: React.FC<ToolbarProps> = ({
           </TooltipTrigger>
           <TooltipContent className="bg-zinc-900 border border-zinc-800 text-[10px] text-zinc-200">
             {showChat ? 'Hide Chat Sidebar (C)' : 'Show Chat Sidebar (C)'}
+          </TooltipContent>
+        </Tooltip>
+
+        {/* Toggle AI Panel */}
+        <Tooltip>
+          <TooltipTrigger asChild>
+            <Button
+              type="button"
+              variant={showAI ? 'secondary' : 'outline'}
+              size="icon-sm"
+              className={`size-9 rounded-md transition-all border-zinc-800 ${showAI ? 'text-brand-emerald bg-zinc-900/80 border-brand-emerald/20' : ''}`}
+              onClick={onToggleAI}
+            >
+              <Sparkles className="size-4" />
+            </Button>
+          </TooltipTrigger>
+          <TooltipContent className="bg-zinc-900 border border-zinc-800 text-[10px] text-zinc-200">
+            {showAI ? 'Hide AI Assistant' : 'Show AI Assistant'}
           </TooltipContent>
         </Tooltip>
 

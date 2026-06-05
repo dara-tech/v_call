@@ -1,3 +1,4 @@
+import 'dotenv/config';
 import express from 'express';
 import { createServer } from 'http';
 import { Server } from 'socket.io';
@@ -9,6 +10,15 @@ app.use(cors());
 // Health check endpoint
 app.get('/health', (req, res) => {
   res.json({ status: 'ok', timestamp: new Date() });
+});
+
+// Serve Gemini API Key securely to the client
+app.get('/api/live-key', (req, res) => {
+  const key = process.env.GEMINI_API_KEY;
+  if (!key) {
+    return res.status(500).json({ error: 'GEMINI_API_KEY is not set on the server' });
+  }
+  res.json({ success: true, key });
 });
 
 const httpServer = createServer(app);

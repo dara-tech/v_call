@@ -4,6 +4,7 @@ import type { PeerState } from '../hooks/useWebRTC';
 import { Toolbar } from './Toolbar';
 import { Diagnostics } from './Diagnostics';
 import { ChatPanel } from './ChatPanel';
+import { AIPanel } from './AIPanel';
 import { DeviceSelect } from './DeviceSelect';
 import { Dialog, DialogContent, DialogHeader, DialogTitle } from '@/components/ui/dialog';
 import { Button } from '@/components/ui/button';
@@ -82,6 +83,7 @@ export const CallRoom: React.FC<CallRoomProps> = ({
 
   // UI state toggles
   const [showChat, setShowChat] = useState(false);
+  const [showAI, setShowAI] = useState(false);
   const [showStats, setShowStats] = useState(false);
   const [showSettings, setShowSettings] = useState(false);
   const [activeAudioId, setActiveAudioId] = useState(initialAudioId);
@@ -273,12 +275,14 @@ export const CallRoom: React.FC<CallRoomProps> = ({
               isScreenSharing={isScreenSharing}
               showChat={showChat}
               showStats={showStats}
+              showAI={showAI}
               unreadCount={unreadCount}
               onToggleMute={toggleMute}
               onToggleCamera={toggleCamera}
               onToggleScreenShare={toggleScreenShare}
               onToggleChat={() => setShowChat(!showChat)}
               onToggleStats={() => setShowStats(!showStats)}
+              onToggleAI={() => setShowAI(!showAI)}
               onLeaveCall={handleExitRoom}
             />
           </div>
@@ -294,6 +298,13 @@ export const CallRoom: React.FC<CallRoomProps> = ({
               selfName={userName}
               onSendMessage={sendChatMessage}
             />
+          </div>
+        )}
+
+        {/* AI Assistant Sidebar */}
+        {showAI && (
+          <div className="h-full shrink-0 flex">
+            <AIPanel />
           </div>
         )}
 
