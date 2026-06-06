@@ -12,12 +12,27 @@ interface WatchPartyPlayerProps {
   onClose: () => void;
 }
 
-// Platforms supported via direct URL paste (react-player handles them all)
+interface VideoResult {
+  id: string;
+  source: 'youtube' | 'dailymotion';
+  title: string;
+  thumbnail: string;
+  duration: string;
+  author: string;
+  url: string;
+}
+
+type FilterSource = 'all' | 'youtube' | 'dailymotion';
+
+const SOURCE_META: Record<string, { label: string; color: string; dot: string }> = {
+  youtube:    { label: 'YouTube',    color: 'text-red-400',    dot: 'bg-red-500' },
+  dailymotion:{ label: 'DailyMotion',color: 'text-orange-400', dot: 'bg-orange-500' },
+};
+
 const PLATFORMS = [
   { label: 'Vimeo',       color: '#1ab7ea' },
   { label: 'Twitch',      color: '#9146ff' },
   { label: 'Facebook',    color: '#4267b2' },
-  { label: 'DailyMotion', color: '#ff7000' },
   { label: 'Streamable',  color: '#fff' },
   { label: 'MP4 / HLS',   color: '#05C77E' },
 ];
@@ -29,7 +44,9 @@ export const WatchPartyPlayer: React.FC<WatchPartyPlayerProps> = ({
 }) => {
   const playerRef = useRef<any>(null);
   const [searchQuery, setSearchQuery] = useState('');
-  const [searchResults, setSearchResults] = useState<any[]>([]);
+  const [allResults, setAllResults] = useState<VideoResult[]>([]);
+  const [sources, setSources] = useState<Record<string, number>>({});
+  const [filter, setFilter] = useState<FilterSource>('all');
   const [isSearching, setIsSearching] = useState(false);
   const [showSearch, setShowSearch] = useState(!videoSyncState.url);
   const [showUrlInput, setShowUrlInput] = useState(false);
@@ -75,13 +92,15 @@ export const WatchPartyPlayer: React.FC<WatchPartyPlayerProps> = ({
   };
 
   const doSearch = useCallback(async (q: string) => {
-    if (!q.trim()) { setSearchResults([]); return; }
+    if (!q.trim()) { setAllResults([]); setSources({}); return; }
     setIsSearching(true);
+    setFilter('all');
     try {
       const BASE = import.meta.env.VITE_SERVER_URL || 'http://localhost:5001';
-      const res = await fetch(`${BASE}/api/youtube/search?q=${encodeURIComponent(q)}`);
+      const res = await fetch(`${BASE}/api/search?q=${encodeURIComponent(q)}`);
       const data = await res.json();
-      if (data.videos) setSearchResults(data.videos);
+      if (data.videos) setAllResults(data.videos);
+      if (data.sources) setSources(data.sources);
     } catch (e) {
       console.error('Search failed:', e);
     } finally {
@@ -102,14 +121,11 @@ export const WatchPartyPlayer: React.FC<WatchPartyPlayerProps> = ({
     doSearch(searchQuery);
   };
 
-  const handleSelectVideo = (video: any) => {
-    broadcastVideoState({
-      url: `https://www.youtube.com/watch?v=${video.id}`,
-      playing: true, playedSeconds: 0, timestamp: Date.now(),
-    });
+  const handleSelectVideo = (video: VideoResult) => {
+    broadcastVideoState({ url: video.url, playing: true, playedSeconds: 0, timestamp: Date.now() });
     setShowSearch(false);
     setSearchQuery('');
-    setSearchResults([]);
+    setAllResults([]);
   };
 
   const handleUrlSubmit = (e: React.FormEvent) => {
@@ -119,7 +135,7 @@ export const WatchPartyPlayer: React.FC<WatchPartyPlayerProps> = ({
     if (!trimmed) return;
     try { new URL(trimmed); } catch { setUrlError('Invalid URL'); return; }
     if (!ReactPlayer.canPlay(trimmed)) {
-      setUrlError('Unsupported platform. Try Vimeo, Twitch, Facebook, DailyMotion, Streamable, or a .mp4 link.');
+      setUrlError('Unsupported. Try Vimeo, Twitch, Facebook, Streamable or a .mp4 link.');
       return;
     }
     broadcastVideoState({ url: trimmed, playing: true, playedSeconds: 0, timestamp: Date.now() });
@@ -131,13 +147,19 @@ export const WatchPartyPlayer: React.FC<WatchPartyPlayerProps> = ({
   const handleReset = () => {
     setShowSearch(true);
     setShowUrlInput(false);
-    setSearchResults([]);
+    setAllResults([]);
     setSearchQuery('');
     setUrlInput('');
     setUrlError('');
+    setFilter('all');
   };
 
+  const filteredResults = filter === 'all'
+    ? allResults
+    : allResults.filter(v => v.source === filter);
+
   const isPlayerVisible = !showSearch && !!videoSyncState.url;
+  const hasResults = allResults.length > 0 && !isSearching;
 
   return (
     <div className="flex flex-col h-full w-full bg-zinc-950 overflow-hidden">
@@ -162,41 +184,59 @@ export const WatchPartyPlayer: React.FC<WatchPartyPlayerProps> = ({
         </div>
       </div>
 
-      {/* ── Search + URL inputs ── */}
+      {/* ── Search bar ── */}
       {(showSearch || !videoSyncState.url) && (
         <div className="shrink-0 border-b border-zinc-900">
-          {/* YouTube search bar */}
           <form onSubmit={handleSearchSubmit} className="relative flex items-center px-4 py-3">
             <div className="absolute left-7 flex items-center pointer-events-none">
               {isSearching
                 ? <Loader2 className="size-3.5 text-brand-cyan animate-spin" />
                 : <Search className="size-3.5 text-zinc-500" />}
             </div>
-            <Input
-              autoFocus
-              type="text"
-              placeholder="Search YouTube..."
+            <Input autoFocus type="text"
+              placeholder="Search YouTube + DailyMotion..."
               value={searchQuery}
               onChange={handleQueryChange}
               className="pl-9 pr-8 h-9 text-xs bg-zinc-900 border-zinc-800 text-zinc-200 placeholder:text-zinc-600 focus-visible:ring-brand-cyan/40 focus-visible:border-brand-cyan/50 rounded-lg w-full"
             />
             {searchQuery && (
               <button type="button"
-                onClick={() => { setSearchQuery(''); setSearchResults([]); }}
+                onClick={() => { setSearchQuery(''); setAllResults([]); setSources({}); }}
                 className="absolute right-7 text-zinc-500 hover:text-zinc-300 transition-colors">
                 <X className="size-3.5" />
               </button>
             )}
           </form>
 
-          {/* "Or paste a link" toggle */}
+          {/* Source filter tabs — shown only when results exist */}
+          {hasResults && (
+            <div className="flex items-center gap-0.5 px-4 pb-2">
+              {(['all', 'youtube', 'dailymotion'] as FilterSource[]).map(src => {
+                const meta = src === 'all' ? null : SOURCE_META[src];
+                const count = src === 'all' ? allResults.length : (sources[src] ?? 0);
+                return (
+                  <button key={src}
+                    onClick={() => setFilter(src)}
+                    className={`flex items-center gap-1.5 px-2.5 py-1 rounded-full text-[10px] font-semibold transition-all ${
+                      filter === src
+                        ? 'bg-zinc-800 text-zinc-100'
+                        : 'text-zinc-500 hover:text-zinc-300 hover:bg-zinc-900'
+                    }`}>
+                    {meta && <span className={`size-1.5 rounded-full ${meta.dot}`} />}
+                    {src === 'all' ? 'All' : meta!.label}
+                    <span className="text-[9px] opacity-60">{count}</span>
+                  </button>
+                );
+              })}
+            </div>
+          )}
+
+          {/* Paste URL toggle */}
           <div className="px-4 pb-3">
-            <button
-              onClick={() => setShowUrlInput(v => !v)}
-              className="flex items-center gap-1.5 text-[10px] text-zinc-500 hover:text-brand-cyan transition-colors"
-            >
+            <button onClick={() => setShowUrlInput(v => !v)}
+              className="flex items-center gap-1.5 text-[10px] text-zinc-500 hover:text-brand-cyan transition-colors">
               <Link2 className="size-3" />
-              {showUrlInput ? 'Hide link input' : 'Or paste a link from Vimeo, Twitch, Facebook…'}
+              Or paste a link from Vimeo, Twitch, Facebook…
               <ChevronRight className={`size-3 transition-transform ${showUrlInput ? 'rotate-90' : ''}`} />
             </button>
 
@@ -205,12 +245,10 @@ export const WatchPartyPlayer: React.FC<WatchPartyPlayerProps> = ({
                 <form onSubmit={handleUrlSubmit} className="flex gap-2">
                   <div className="relative flex-1">
                     <Link2 className="absolute left-2.5 top-1/2 -translate-y-1/2 size-3.5 text-zinc-500 pointer-events-none" />
-                    <Input
-                      type="url"
-                      placeholder="https://vimeo.com/..."
+                    <Input type="url" placeholder="https://vimeo.com/..."
                       value={urlInput}
                       onChange={e => { setUrlInput(e.target.value); setUrlError(''); }}
-                      className="pl-8 h-8 text-xs bg-zinc-900 border-zinc-800 text-zinc-200 placeholder:text-zinc-600 focus-visible:ring-brand-cyan/40 focus-visible:border-brand-cyan/50"
+                      className="pl-8 h-8 text-xs bg-zinc-900 border-zinc-800 text-zinc-200 placeholder:text-zinc-600 focus-visible:ring-brand-cyan/40"
                     />
                   </div>
                   <Button type="submit" disabled={!urlInput.trim()} size="sm"
@@ -218,14 +256,11 @@ export const WatchPartyPlayer: React.FC<WatchPartyPlayerProps> = ({
                     Play
                   </Button>
                 </form>
-
                 {urlError && <p className="text-[10px] text-brand-rose">{urlError}</p>}
-
-                {/* Platform chips */}
                 <div className="flex flex-wrap gap-1.5">
                   {PLATFORMS.map(p => (
                     <span key={p.label}
-                      className="px-2 py-0.5 rounded-full border border-zinc-800 text-[9px] text-zinc-400 bg-zinc-900/60"
+                      className="px-2 py-0.5 rounded-full border text-[9px] bg-zinc-900/60"
                       style={{ borderColor: `${p.color}30`, color: p.color }}>
                       {p.label}
                     </span>
@@ -241,39 +276,64 @@ export const WatchPartyPlayer: React.FC<WatchPartyPlayerProps> = ({
       <div className="flex-1 relative overflow-hidden">
 
         {/* Results list */}
-        {showSearch && searchResults.length > 0 && !isSearching && (
+        {showSearch && hasResults && (
           <div className="absolute inset-0 overflow-y-auto">
             <div className="px-3 py-2 flex items-center justify-between sticky top-0 bg-zinc-950/95 backdrop-blur-sm z-10 border-b border-zinc-900/50">
-              <span className="text-[10px] text-zinc-500 font-medium">{searchResults.length} results</span>
-              <span className="text-[9px] text-zinc-600 uppercase tracking-wider">YouTube</span>
+              <span className="text-[10px] text-zinc-500 font-medium">
+                {filteredResults.length} result{filteredResults.length !== 1 ? 's' : ''}
+                {filter !== 'all' && ` from ${SOURCE_META[filter].label}`}
+              </span>
+              <div className="flex items-center gap-2">
+                {Object.entries(sources).map(([src, count]) => (
+                  <span key={src} className="flex items-center gap-1 text-[9px] text-zinc-600">
+                    <span className={`size-1.5 rounded-full ${SOURCE_META[src]?.dot}`} />
+                    {count}
+                  </span>
+                ))}
+              </div>
             </div>
+
             <div className="divide-y divide-zinc-900">
-              {searchResults.map((video) => (
-                <button
-                  key={video.id}
-                  onClick={() => handleSelectVideo(video)}
-                  onMouseEnter={() => setHoveredId(video.id)}
-                  onMouseLeave={() => setHoveredId(null)}
-                  className="w-full flex items-start gap-3 px-3 py-2.5 hover:bg-zinc-900/70 transition-colors group text-left focus:outline-none"
-                >
-                  <div className="relative shrink-0 w-28 aspect-video rounded-md overflow-hidden bg-zinc-800">
-                    <img src={video.thumbnail} alt={video.title}
-                      className="w-full h-full object-cover transition-transform duration-200 group-hover:scale-105" />
-                    <span className="absolute bottom-1 right-1 flex items-center gap-0.5 bg-black/85 px-1 py-0.5 rounded text-[8px] font-mono text-zinc-300">
-                      <Clock className="size-1.5 opacity-60" />{video.duration}
-                    </span>
-                    <div className={`absolute inset-0 bg-brand-cyan/15 flex items-center justify-center transition-opacity duration-150 ${hoveredId === video.id ? 'opacity-100' : 'opacity-0'}`}>
-                      <PlayCircle className="size-7 text-brand-cyan drop-shadow-lg" />
+              {filteredResults.map((video) => {
+                const meta = SOURCE_META[video.source];
+                return (
+                  <button key={`${video.source}-${video.id}`}
+                    onClick={() => handleSelectVideo(video)}
+                    onMouseEnter={() => setHoveredId(`${video.source}-${video.id}`)}
+                    onMouseLeave={() => setHoveredId(null)}
+                    className="w-full flex items-start gap-3 px-3 py-2.5 hover:bg-zinc-900/70 transition-colors group text-left focus:outline-none"
+                  >
+                    {/* Thumbnail */}
+                    <div className="relative shrink-0 w-28 aspect-video rounded-md overflow-hidden bg-zinc-800">
+                      <img src={video.thumbnail} alt={video.title}
+                        className="w-full h-full object-cover transition-transform duration-200 group-hover:scale-105" />
+                      {video.duration && (
+                        <span className="absolute bottom-1 right-1 flex items-center gap-0.5 bg-black/85 px-1 py-0.5 rounded text-[8px] font-mono text-zinc-300">
+                          <Clock className="size-1.5 opacity-60" />{video.duration}
+                        </span>
+                      )}
+                      {/* Source badge on thumbnail */}
+                      <span className={`absolute top-1 left-1 px-1.5 py-0.5 rounded text-[7px] font-bold bg-black/80 uppercase tracking-wider ${meta.color}`}>
+                        {video.source === 'youtube' ? 'YT' : 'DM'}
+                      </span>
+                      <div className={`absolute inset-0 bg-brand-cyan/15 flex items-center justify-center transition-opacity duration-150 ${hoveredId === `${video.source}-${video.id}` ? 'opacity-100' : 'opacity-0'}`}>
+                        <PlayCircle className="size-7 text-brand-cyan drop-shadow-lg" />
+                      </div>
                     </div>
-                  </div>
-                  <div className="flex-1 min-w-0 py-0.5">
-                    <p className="text-[11px] font-semibold text-zinc-200 line-clamp-2 leading-snug group-hover:text-brand-cyan transition-colors">
-                      {video.title}
-                    </p>
-                    <p className="text-[10px] text-zinc-500 mt-1 truncate">{video.author}</p>
-                  </div>
-                </button>
-              ))}
+
+                    {/* Info */}
+                    <div className="flex-1 min-w-0 py-0.5">
+                      <p className="text-[11px] font-semibold text-zinc-200 line-clamp-2 leading-snug group-hover:text-brand-cyan transition-colors">
+                        {video.title}
+                      </p>
+                      <div className="flex items-center gap-1.5 mt-1">
+                        <span className={`size-1.5 rounded-full shrink-0 ${meta.dot}`} />
+                        <p className="text-[10px] text-zinc-500 truncate">{video.author}</p>
+                      </div>
+                    </div>
+                  </button>
+                );
+              })}
             </div>
           </div>
         )}
@@ -281,7 +341,7 @@ export const WatchPartyPlayer: React.FC<WatchPartyPlayerProps> = ({
         {/* Skeleton */}
         {isSearching && (
           <div className="absolute inset-0 divide-y divide-zinc-900 overflow-hidden">
-            {[...Array(6)].map((_, i) => (
+            {[...Array(7)].map((_, i) => (
               <div key={i} className="flex items-start gap-3 px-3 py-2.5 animate-pulse">
                 <div className="shrink-0 w-28 aspect-video rounded-md bg-zinc-800/80" />
                 <div className="flex-1 py-1 space-y-2">
@@ -317,7 +377,7 @@ export const WatchPartyPlayer: React.FC<WatchPartyPlayerProps> = ({
         )}
 
         {/* Empty state */}
-        {showSearch && !isSearching && searchResults.length === 0 && !searchQuery && (
+        {showSearch && !isSearching && allResults.length === 0 && !searchQuery && (
           <div className="absolute inset-0 flex flex-col items-center justify-center gap-4 text-center p-8">
             <div className="relative">
               <div className="size-16 rounded-2xl bg-zinc-900 border border-zinc-800 flex items-center justify-center">
@@ -330,14 +390,14 @@ export const WatchPartyPlayer: React.FC<WatchPartyPlayerProps> = ({
             <div className="space-y-1.5 max-w-[220px]">
               <p className="text-xs font-semibold text-zinc-300">Watch together</p>
               <p className="text-[11px] text-zinc-500 leading-relaxed">
-                Search YouTube above, or paste a link from Vimeo, Twitch, Facebook, and more.
+                Search across <span className="text-red-400 font-medium">YouTube</span> and <span className="text-orange-400 font-medium">DailyMotion</span> simultaneously — results appear as you type.
               </p>
             </div>
           </div>
         )}
 
         {/* No results */}
-        {showSearch && !isSearching && searchResults.length === 0 && searchQuery.length > 2 && (
+        {showSearch && !isSearching && allResults.length === 0 && searchQuery.length > 2 && (
           <div className="absolute inset-0 flex flex-col items-center justify-center gap-3 text-center p-8">
             <Search className="size-8 text-zinc-700" />
             <p className="text-xs text-zinc-500">No results for <span className="text-zinc-300 font-medium">"{searchQuery}"</span></p>

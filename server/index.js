@@ -16,23 +16,72 @@ app.use(cors());
 app.get('/api/youtube/search', async (req, res) => {
   try {
     const query = req.query.q;
-    if (!query) {
-      return res.status(400).json({ error: 'Query parameter q is required' });
-    }
+    if (!query) return res.status(400).json({ error: 'Query parameter q is required' });
     const result = await ytSearch(query);
-    // Return top 15 video results
     const videos = result.videos.slice(0, 15).map(v => ({
       id: v.videoId,
+      source: 'youtube',
       title: v.title,
       thumbnail: v.thumbnail,
       duration: v.timestamp,
-      author: v.author.name
+      author: v.author.name,
+      url: `https://www.youtube.com/watch?v=${v.videoId}`,
     }));
     res.json({ videos });
   } catch (error) {
     console.error('[YouTube API Error]', error);
     res.status(500).json({ error: 'Failed to fetch YouTube results' });
   }
+});
+
+// DailyMotion Search API (free public API, no key required)
+app.get('/api/dailymotion/search', async (req, res) => {
+  try {
+    const query = req.query.q;
+    if (!query) return res.status(400).json({ error: 'Query parameter q is required' });
+    const dmUrl = `https://api.dailymotion.com/videos?search=${encodeURIComponent(query)}&fields=id,title,thumbnail_360_url,duration,owner.screenname&limit=10&family_filter=1`;
+    const response = await fetch(dmUrl);
+    const data = await response.json();
+    const videos = (data.list || []).map(v => ({
+      id: v.id,
+      source: 'dailymotion',
+      title: v.title,
+      thumbnail: v.thumbnail_360_url,
+      duration: v.duration ? `${Math.floor(v.duration / 60)}:${String(v.duration % 60).padStart(2, '0')}` : '',
+      author: v['owner.screenname'] || '',
+      url: `https://www.dailymotion.com/video/${v.id}`,
+    }));
+    res.json({ videos });
+  } catch (error) {
+    console.error('[DailyMotion API Error]', error);
+    res.status(500).json({ error: 'Failed to fetch DailyMotion results' });
+  }
+});
+
+// Unified parallel search — queries all sources simultaneously
+app.get('/api/search', async (req, res) => {
+  const query = req.query.q;
+  if (!query) return res.status(400).json({ error: 'Query parameter q is required' });
+
+  const BASE = `http://localhost:${process.env.PORT || 5001}`;
+  const [ytResult, dmResult] = await Promise.allSettled([
+    fetch(`${BASE}/api/youtube/search?q=${encodeURIComponent(query)}`).then(r => r.json()),
+    fetch(`${BASE}/api/dailymotion/search?q=${encodeURIComponent(query)}`).then(r => r.json()),
+  ]);
+
+  const youtube  = ytResult.status  === 'fulfilled' ? (ytResult.value.videos  || []) : [];
+  const dailymotion = dmResult.status === 'fulfilled' ? (dmResult.value.videos || []) : [];
+
+  // Interleave: 2 YT, 1 DM, 2 YT, 1 DM ... so results feel mixed
+  const merged = [];
+  let yi = 0, di = 0;
+  while (yi < youtube.length || di < dailymotion.length) {
+    if (yi < youtube.length)    { merged.push(youtube[yi++]); }
+    if (yi < youtube.length)    { merged.push(youtube[yi++]); }
+    if (di < dailymotion.length){ merged.push(dailymotion[di++]); }
+  }
+
+  res.json({ videos: merged, sources: { youtube: youtube.length, dailymotion: dailymotion.length } });
 });
 
 // Health check endpoint
