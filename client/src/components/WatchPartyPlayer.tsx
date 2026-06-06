@@ -5,7 +5,7 @@ import { DailyMotionSyncPlayer } from './DailyMotionSyncPlayer';
 const ReactPlayer = (ReactPlayerImport as any).default || ReactPlayerImport;
 import { Button } from '@/components/ui/button';
 import { Input } from '@/components/ui/input';
-import { X, Search, RotateCcw, Loader2, Clock, PlayCircle } from 'lucide-react';
+import { X, Search, RotateCcw, Loader2, Clock, PlayCircle, Link2, ChevronRight } from 'lucide-react';
 import type { VideoSyncState } from '../hooks/useWebRTC';
 
 interface WatchPartyPlayerProps {
@@ -31,7 +31,13 @@ const SOURCE_META: Record<string, { label: string; color: string; dot: string }>
   dailymotion:{ label: 'DailyMotion',color: 'text-orange-400', dot: 'bg-orange-500' },
 };
 
-
+const PLATFORMS = [
+  { label: 'Vimeo',       color: '#1ab7ea' },
+  { label: 'Twitch',      color: '#9146ff' },
+  { label: 'Facebook',    color: '#4267b2' },
+  { label: 'Streamable',  color: '#fff' },
+  { label: 'MP4 / HLS',   color: '#05C77E' },
+];
 
 export const WatchPartyPlayer: React.FC<WatchPartyPlayerProps> = ({
   videoSyncState,
@@ -45,6 +51,9 @@ export const WatchPartyPlayer: React.FC<WatchPartyPlayerProps> = ({
   const [filter, setFilter] = useState<FilterSource>('all');
   const [isSearching, setIsSearching] = useState(false);
   const [showSearch, setShowSearch] = useState(!videoSyncState.url);
+  const [showUrlInput, setShowUrlInput] = useState(false);
+  const [urlInput, setUrlInput] = useState('');
+  const [urlError, setUrlError] = useState('');
   const [isPlaying, setIsPlaying] = useState(false);
   const [hoveredId, setHoveredId] = useState<string | null>(null);
   const seekingRef = useRef(false);
@@ -126,11 +135,28 @@ export const WatchPartyPlayer: React.FC<WatchPartyPlayerProps> = ({
     setAllResults([]);
   };
 
-
+  const handleUrlSubmit = (e: React.FormEvent) => {
+    e.preventDefault();
+    setUrlError('');
+    const trimmed = urlInput.trim();
+    if (!trimmed) return;
+    try { new URL(trimmed); } catch { setUrlError('Invalid URL'); return; }
+    if (!ReactPlayer.canPlay(trimmed)) {
+      setUrlError('Unsupported. Try Vimeo, Twitch, Facebook, Streamable or a .mp4 link.');
+      return;
+    }
+    broadcastVideoState({ url: trimmed, playing: true, playedSeconds: 0, timestamp: Date.now() });
+    setShowSearch(false);
+    setUrlInput('');
+    setShowUrlInput(false);
+  };
 
   const handleReset = () => {
     setShowSearch(true);
+    setShowUrlInput(false);
     setSearchQuery('');
+    setUrlInput('');
+    setUrlError('');
     setFilter('all');
     doSearch('', true);
   };
@@ -153,19 +179,19 @@ export const WatchPartyPlayer: React.FC<WatchPartyPlayerProps> = ({
   const dmVideoId = isDailyMotion ? videoSyncState.url?.split('/video/')[1]?.split('?')[0] : null;
 
   return (
-    <div className="flex flex-col h-full w-full bg-black overflow-hidden">
+    <div className="flex flex-col h-full w-full bg-zinc-950 overflow-hidden">
 
       {/* ── Header ── */}
-      <div className="shrink-0 flex items-center justify-end px-4 h-11 border-b border-white/5">
+      <div className="shrink-0 flex items-center justify-end px-4 h-11 border-b border-zinc-900">
         <div className="flex items-center gap-1.5">
           {isPlayerVisible && (
             <Button variant="ghost" size="sm" onClick={handleReset}
-              className="h-6 px-2 text-[10px] text-white/50 hover:text-brand-cyan hover:bg-brand-cyan/10 gap-1">
+              className="h-6 px-2 text-[10px] text-zinc-400 hover:text-brand-cyan hover:bg-brand-cyan/10 gap-1">
               <RotateCcw className="size-3" /> Change
             </Button>
           )}
           <Button variant="ghost" size="icon-sm" onClick={onClose}
-            className="size-6 text-white/40 hover:text-white hover:bg-white/10 rounded-md">
+            className="size-6 text-zinc-500 hover:text-white hover:bg-zinc-800 rounded-md">
             <X className="size-3.5" />
           </Button>
         </div>
@@ -173,23 +199,23 @@ export const WatchPartyPlayer: React.FC<WatchPartyPlayerProps> = ({
 
       {/* ── Search bar ── */}
       {(showSearch || !videoSyncState.url) && (
-        <div className="shrink-0 border-b border-white/5">
+        <div className="shrink-0 border-b border-zinc-900">
           <form onSubmit={handleSearchSubmit} className="relative flex items-center px-4 py-3">
             <div className="absolute left-7 flex items-center pointer-events-none">
               {isSearching
                 ? <Loader2 className="size-3.5 text-brand-cyan animate-spin" />
-                : <Search className="size-3.5 text-white/40" />}
+                : <Search className="size-3.5 text-zinc-500" />}
             </div>
             <Input autoFocus type="text"
               placeholder="Search YouTube + DailyMotion..."
               value={searchQuery}
               onChange={handleQueryChange}
-              className="pl-9 pr-8 h-9 text-xs bg-white/5 border-white/10 text-white/90 placeholder:text-zinc-600 focus-visible:ring-brand-cyan/40 focus-visible:border-brand-cyan/50 rounded-lg w-full"
+              className="pl-9 pr-8 h-9 text-xs bg-zinc-900 border-zinc-800 text-zinc-200 placeholder:text-zinc-600 focus-visible:ring-brand-cyan/40 focus-visible:border-brand-cyan/50 rounded-lg w-full"
             />
             {searchQuery && (
               <button type="button"
                 onClick={() => { setSearchQuery(''); doSearch('', true); }}
-                className="absolute right-7 text-white/40 hover:text-white/70 transition-colors">
+                className="absolute right-7 text-zinc-500 hover:text-zinc-300 transition-colors">
                 <X className="size-3.5" />
               </button>
             )}
@@ -206,8 +232,8 @@ export const WatchPartyPlayer: React.FC<WatchPartyPlayerProps> = ({
                     onClick={() => setFilter(src)}
                     className={`flex items-center gap-1.5 px-2.5 py-1 rounded-full text-[10px] font-semibold transition-all ${
                       filter === src
-                        ? 'bg-white/10 text-white'
-                        : 'text-white/40 hover:text-white/70 hover:bg-white/5'
+                        ? 'bg-zinc-800 text-zinc-100'
+                        : 'text-zinc-500 hover:text-zinc-300 hover:bg-zinc-900'
                     }`}>
                     {meta && <span className={`size-1.5 rounded-full ${meta.dot}`} />}
                     {src === 'all' ? 'All' : meta!.label}
@@ -218,7 +244,44 @@ export const WatchPartyPlayer: React.FC<WatchPartyPlayerProps> = ({
             </div>
           )}
 
+          {/* Paste URL toggle */}
+          <div className="px-4 pb-3">
+            <button onClick={() => setShowUrlInput(v => !v)}
+              className="flex items-center gap-1.5 text-[10px] text-zinc-500 hover:text-brand-cyan transition-colors">
+              <Link2 className="size-3" />
+              Or paste a link from Vimeo, Twitch, Facebook…
+              <ChevronRight className={`size-3 transition-transform ${showUrlInput ? 'rotate-90' : ''}`} />
+            </button>
 
+            {showUrlInput && (
+              <div className="mt-2 space-y-2">
+                <form onSubmit={handleUrlSubmit} className="flex gap-2">
+                  <div className="relative flex-1">
+                    <Link2 className="absolute left-2.5 top-1/2 -translate-y-1/2 size-3.5 text-zinc-500 pointer-events-none" />
+                    <Input type="url" placeholder="https://vimeo.com/..."
+                      value={urlInput}
+                      onChange={e => { setUrlInput(e.target.value); setUrlError(''); }}
+                      className="pl-8 h-8 text-xs bg-zinc-900 border-zinc-800 text-zinc-200 placeholder:text-zinc-600 focus-visible:ring-brand-cyan/40"
+                    />
+                  </div>
+                  <Button type="submit" disabled={!urlInput.trim()} size="sm"
+                    className="h-8 px-3 bg-brand-cyan hover:bg-brand-cyan/85 text-zinc-950 font-bold text-[11px] shrink-0 disabled:opacity-40">
+                    Play
+                  </Button>
+                </form>
+                {urlError && <p className="text-[10px] text-brand-rose">{urlError}</p>}
+                <div className="flex flex-wrap gap-1.5">
+                  {PLATFORMS.map(p => (
+                    <span key={p.label}
+                      className="px-2 py-0.5 rounded-full border text-[9px] bg-zinc-900/60"
+                      style={{ borderColor: `${p.color}30`, color: p.color }}>
+                      {p.label}
+                    </span>
+                  ))}
+                </div>
+              </div>
+            )}
+          </div>
         </div>
       )}
 
@@ -228,8 +291,8 @@ export const WatchPartyPlayer: React.FC<WatchPartyPlayerProps> = ({
         {/* Results list */}
         {showSearch && hasResults && (
           <div className="absolute inset-0 overflow-y-auto">
-            <div className="px-3 py-2 flex items-center justify-between sticky top-0 bg-black/95 backdrop-blur-sm z-10 border-b border-white/5/50">
-              <span className="text-[10px] text-white/40 font-medium">
+            <div className="px-3 py-2 flex items-center justify-between sticky top-0 bg-zinc-950/95 backdrop-blur-sm z-10 border-b border-zinc-900/50">
+              <span className="text-[10px] text-zinc-500 font-medium">
                 {searchQuery ? (
                   <>{filteredResults.length} result{filteredResults.length !== 1 ? 's' : ''}{filter !== 'all' && ` from ${SOURCE_META[filter].label}`}</>
                 ) : (
@@ -246,7 +309,7 @@ export const WatchPartyPlayer: React.FC<WatchPartyPlayerProps> = ({
               </div>
             </div>
 
-            <div className="divide-y divide-white/5">
+            <div className="grid grid-cols-1 sm:grid-cols-2 md:grid-cols-3 lg:grid-cols-4 gap-4 p-4">
               {filteredResults.map((video) => {
                 const meta = SOURCE_META[video.source];
                 return (
@@ -254,34 +317,34 @@ export const WatchPartyPlayer: React.FC<WatchPartyPlayerProps> = ({
                     onClick={() => handleSelectVideo(video)}
                     onMouseEnter={() => setHoveredId(`${video.source}-${video.id}`)}
                     onMouseLeave={() => setHoveredId(null)}
-                    className="w-full flex items-start gap-3 px-3 py-2.5 hover:bg-white/5/70 transition-colors group text-left focus:outline-none"
+                    className="w-full flex flex-col gap-2.5 group text-left focus:outline-none rounded-xl p-2 hover:bg-zinc-900/60 transition-colors"
                   >
                     {/* Thumbnail */}
-                    <div className="relative shrink-0 w-28 aspect-video rounded-md overflow-hidden bg-white/10">
+                    <div className="relative w-full aspect-video rounded-lg overflow-hidden bg-zinc-800">
                       <img src={video.thumbnail} alt={video.title}
-                        className="w-full h-full object-cover transition-transform duration-200 group-hover:scale-105" />
+                        className="w-full h-full object-cover transition-transform duration-300 group-hover:scale-105" />
                       {video.duration && (
-                        <span className="absolute bottom-1 right-1 flex items-center gap-0.5 bg-black/85 px-1 py-0.5 rounded text-[8px] font-mono text-white/70">
-                          <Clock className="size-1.5 opacity-60" />{video.duration}
+                        <span className="absolute bottom-1.5 right-1.5 flex items-center gap-1 bg-black/80 px-1.5 py-0.5 rounded text-[10px] font-medium tracking-wide text-white">
+                          <Clock className="size-2.5 opacity-70" />{video.duration}
                         </span>
                       )}
                       {/* Source badge on thumbnail */}
-                      <span className={`absolute top-1 left-1 px-1.5 py-0.5 rounded text-[7px] font-bold bg-black/80 uppercase tracking-wider ${meta.color}`}>
-                        {video.source === 'youtube' ? 'YT' : 'DM'}
+                      <span className={`absolute top-1.5 left-1.5 px-1.5 py-0.5 rounded text-[9px] font-bold bg-black/80 uppercase tracking-wider ${meta.color}`}>
+                        {video.source === 'youtube' ? 'YouTube' : 'DailyMotion'}
                       </span>
-                      <div className={`absolute inset-0 bg-brand-cyan/15 flex items-center justify-center transition-opacity duration-150 ${hoveredId === `${video.source}-${video.id}` ? 'opacity-100' : 'opacity-0'}`}>
-                        <PlayCircle className="size-7 text-brand-cyan drop-shadow-lg" />
+                      <div className={`absolute inset-0 bg-brand-cyan/20 flex items-center justify-center transition-opacity duration-200 ${hoveredId === `${video.source}-${video.id}` ? 'opacity-100' : 'opacity-0'}`}>
+                        <PlayCircle className="size-12 text-brand-cyan drop-shadow-xl" strokeWidth={1.5} />
                       </div>
                     </div>
 
                     {/* Info */}
-                    <div className="flex-1 min-w-0 py-0.5">
-                      <p className="text-[11px] font-semibold text-white/90 line-clamp-2 leading-snug group-hover:text-brand-cyan transition-colors">
+                    <div className="flex flex-col px-1 w-full">
+                      <p className="text-[13px] font-semibold text-zinc-100 line-clamp-2 leading-tight group-hover:text-brand-cyan transition-colors mb-1.5">
                         {video.title}
                       </p>
-                      <div className="flex items-center gap-1.5 mt-1">
-                        <span className={`size-1.5 rounded-full shrink-0 ${meta.dot}`} />
-                        <p className="text-[10px] text-white/40 truncate">{video.author}</p>
+                      <div className="flex items-center gap-1.5">
+                        <span className={`size-2 rounded-full shrink-0 ${meta.dot}`} />
+                        <p className="text-[11px] font-medium text-zinc-400 truncate">{video.author}</p>
                       </div>
                     </div>
                   </button>
@@ -293,17 +356,19 @@ export const WatchPartyPlayer: React.FC<WatchPartyPlayerProps> = ({
 
         {/* Skeleton */}
         {isSearching && (
-          <div className="absolute inset-0 divide-y divide-white/5 overflow-hidden">
-            {[...Array(7)].map((_, i) => (
-              <div key={i} className="flex items-start gap-3 px-3 py-2.5 animate-pulse">
-                <div className="shrink-0 w-28 aspect-video rounded-md bg-white/10/80" />
-                <div className="flex-1 py-1 space-y-2">
-                  <div className="h-2.5 bg-white/10 rounded w-full" />
-                  <div className="h-2.5 bg-white/10 rounded w-4/5" />
-                  <div className="h-2 bg-white/10/50 rounded w-1/3 mt-2" />
+          <div className="absolute inset-0 overflow-y-auto">
+            <div className="grid grid-cols-1 sm:grid-cols-2 md:grid-cols-3 lg:grid-cols-4 gap-4 p-4">
+              {[...Array(12)].map((_, i) => (
+                <div key={i} className="flex flex-col gap-2.5 p-2">
+                  <div className="w-full aspect-video rounded-lg bg-zinc-800/80 animate-pulse" />
+                  <div className="flex flex-col px-1 space-y-2 mt-1">
+                    <div className="h-3.5 bg-zinc-800 rounded w-[90%] animate-pulse" />
+                    <div className="h-3.5 bg-zinc-800 rounded w-[60%] animate-pulse" />
+                    <div className="h-2.5 bg-zinc-800/50 rounded w-1/3 mt-2 animate-pulse" />
+                  </div>
                 </div>
-              </div>
-            ))}
+              ))}
+            </div>
           </div>
         )}
 
@@ -353,7 +418,7 @@ export const WatchPartyPlayer: React.FC<WatchPartyPlayerProps> = ({
         {showSearch && !isSearching && allResults.length === 0 && searchQuery.length > 2 && (
           <div className="absolute inset-0 flex flex-col items-center justify-center gap-3 text-center p-8">
             <Search className="size-8 text-zinc-700" />
-            <p className="text-xs text-white/40">No results for <span className="text-white/70 font-medium">"{searchQuery}"</span></p>
+            <p className="text-xs text-zinc-500">No results for <span className="text-zinc-300 font-medium">"{searchQuery}"</span></p>
           </div>
         )}
       </div>
