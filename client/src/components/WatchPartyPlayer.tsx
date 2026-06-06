@@ -165,11 +165,7 @@ export const WatchPartyPlayer: React.FC<WatchPartyPlayerProps> = ({
     <div className="flex flex-col h-full w-full bg-zinc-950 overflow-hidden">
 
       {/* ── Header ── */}
-      <div className="shrink-0 flex items-center justify-between px-4 h-11 border-b border-zinc-900">
-        <div className="flex items-center gap-2">
-          <Popcorn className="size-3.5 text-brand-cyan" />
-          <span className="text-[11px] font-bold uppercase tracking-widest text-zinc-300">Watch Party</span>
-        </div>
+      <div className="shrink-0 flex items-center justify-end px-4 h-11 border-b border-zinc-900">
         <div className="flex items-center gap-1.5">
           {isPlayerVisible && (
             <Button variant="ghost" size="sm" onClick={handleReset}

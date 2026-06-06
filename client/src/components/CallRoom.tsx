@@ -7,7 +7,7 @@ import { DeviceSelect } from './DeviceSelect';
 import { WatchPartyPlayer } from './WatchPartyPlayer';
 import { Dialog, DialogContent, DialogHeader, DialogTitle } from '@/components/ui/dialog';
 import { Button } from '@/components/ui/button';
-import { MicOff, VideoOff, Settings, Link, Users, Sparkles, Hand } from 'lucide-react';
+import { MicOff, VideoOff, Settings, Link, Users, Sparkles, Hand, Popcorn } from 'lucide-react';
 import confetti from 'canvas-confetti';
 import { Toaster } from 'sonner';
 
@@ -246,7 +246,14 @@ export const CallRoom: React.FC<CallRoomProps> = ({
       {/* Header Bar */}
       <header className="absolute top-0 inset-x-0 h-14 border-b border-zinc-900/50 bg-gradient-to-b from-zinc-950/80 to-transparent px-4 sm:px-6 flex items-center justify-between z-30 shrink-0 pointer-events-none">
         <div className="flex items-center gap-3 pointer-events-auto">
-          <span className="font-bold text-white tracking-wide text-xs uppercase">V-Call</span>
+          {showWatchParty ? (
+            <div className="flex items-center gap-1.5">
+              <Popcorn className="size-3.5 text-brand-cyan" />
+              <span className="font-bold text-brand-cyan tracking-wide text-xs uppercase">Watch Party</span>
+            </div>
+          ) : (
+            <span className="font-bold text-white tracking-wide text-xs uppercase">V-Call</span>
+          )}
           <div className="h-4 w-px bg-zinc-800" />
           <div className="flex items-center gap-2">
             <span className="text-xs font-mono bg-zinc-900 px-2 py-0.5 border border-zinc-800 rounded text-zinc-300">
