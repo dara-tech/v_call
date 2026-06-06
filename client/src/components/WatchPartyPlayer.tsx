@@ -5,7 +5,7 @@ import { DailyMotionSyncPlayer } from './DailyMotionSyncPlayer';
 const ReactPlayer = (ReactPlayerImport as any).default || ReactPlayerImport;
 import { Button } from '@/components/ui/button';
 import { Input } from '@/components/ui/input';
-import { X, Popcorn, Search, RotateCcw, Loader2, Clock, PlayCircle, Link2, ChevronRight } from 'lucide-react';
+import { X, Search, RotateCcw, Loader2, Clock, PlayCircle } from 'lucide-react';
 import type { VideoSyncState } from '../hooks/useWebRTC';
 
 interface WatchPartyPlayerProps {
@@ -31,13 +31,7 @@ const SOURCE_META: Record<string, { label: string; color: string; dot: string }>
   dailymotion:{ label: 'DailyMotion',color: 'text-orange-400', dot: 'bg-orange-500' },
 };
 
-const PLATFORMS = [
-  { label: 'Vimeo',       color: '#1ab7ea' },
-  { label: 'Twitch',      color: '#9146ff' },
-  { label: 'Facebook',    color: '#4267b2' },
-  { label: 'Streamable',  color: '#fff' },
-  { label: 'MP4 / HLS',   color: '#05C77E' },
-];
+
 
 export const WatchPartyPlayer: React.FC<WatchPartyPlayerProps> = ({
   videoSyncState,
@@ -51,9 +45,6 @@ export const WatchPartyPlayer: React.FC<WatchPartyPlayerProps> = ({
   const [filter, setFilter] = useState<FilterSource>('all');
   const [isSearching, setIsSearching] = useState(false);
   const [showSearch, setShowSearch] = useState(!videoSyncState.url);
-  const [showUrlInput, setShowUrlInput] = useState(false);
-  const [urlInput, setUrlInput] = useState('');
-  const [urlError, setUrlError] = useState('');
   const [isPlaying, setIsPlaying] = useState(false);
   const [hoveredId, setHoveredId] = useState<string | null>(null);
   const seekingRef = useRef(false);
@@ -93,13 +84,14 @@ export const WatchPartyPlayer: React.FC<WatchPartyPlayerProps> = ({
     broadcastVideoState({ ...videoSyncState, playedSeconds: seconds, timestamp: Date.now() });
   };
 
-  const doSearch = useCallback(async (q: string) => {
-    if (!q.trim()) { setAllResults([]); setSources({}); return; }
+  const doSearch = useCallback(async (q: string, isDefault = false) => {
+    if (!q.trim() && !isDefault) { setAllResults([]); setSources({}); return; }
+    const queryToUse = isDefault ? 'top trending movie trailers 2026 official' : q;
     setIsSearching(true);
     setFilter('all');
     try {
       const BASE = import.meta.env.VITE_SERVER_URL || 'http://localhost:5001';
-      const res = await fetch(`${BASE}/api/search?q=${encodeURIComponent(q)}`);
+      const res = await fetch(`${BASE}/api/search?q=${encodeURIComponent(queryToUse)}`);
       const data = await res.json();
       if (data.videos) setAllResults(data.videos);
       if (data.sources) setSources(data.sources);
@@ -114,13 +106,17 @@ export const WatchPartyPlayer: React.FC<WatchPartyPlayerProps> = ({
     const val = e.target.value;
     setSearchQuery(val);
     if (debounceRef.current) clearTimeout(debounceRef.current);
-    debounceRef.current = setTimeout(() => doSearch(val), 500);
+    debounceRef.current = setTimeout(() => {
+      if (!val.trim()) doSearch('', true);
+      else doSearch(val);
+    }, 500);
   };
 
   const handleSearchSubmit = (e: React.FormEvent) => {
     e.preventDefault();
     if (debounceRef.current) clearTimeout(debounceRef.current);
-    doSearch(searchQuery);
+    if (!searchQuery.trim()) doSearch('', true);
+    else doSearch(searchQuery);
   };
 
   const handleSelectVideo = (video: VideoResult) => {
@@ -130,31 +126,20 @@ export const WatchPartyPlayer: React.FC<WatchPartyPlayerProps> = ({
     setAllResults([]);
   };
 
-  const handleUrlSubmit = (e: React.FormEvent) => {
-    e.preventDefault();
-    setUrlError('');
-    const trimmed = urlInput.trim();
-    if (!trimmed) return;
-    try { new URL(trimmed); } catch { setUrlError('Invalid URL'); return; }
-    if (!ReactPlayer.canPlay(trimmed)) {
-      setUrlError('Unsupported. Try Vimeo, Twitch, Facebook, Streamable or a .mp4 link.');
-      return;
-    }
-    broadcastVideoState({ url: trimmed, playing: true, playedSeconds: 0, timestamp: Date.now() });
-    setShowSearch(false);
-    setUrlInput('');
-    setShowUrlInput(false);
-  };
+
 
   const handleReset = () => {
     setShowSearch(true);
-    setShowUrlInput(false);
-    setAllResults([]);
     setSearchQuery('');
-    setUrlInput('');
-    setUrlError('');
     setFilter('all');
+    doSearch('', true);
   };
+
+  useEffect(() => {
+    if (showSearch && allResults.length === 0 && !searchQuery) {
+      doSearch('', true);
+    }
+  }, [showSearch, doSearch]);
 
   const filteredResults = filter === 'all'
     ? allResults
@@ -203,7 +188,7 @@ export const WatchPartyPlayer: React.FC<WatchPartyPlayerProps> = ({
             />
             {searchQuery && (
               <button type="button"
-                onClick={() => { setSearchQuery(''); setAllResults([]); setSources({}); }}
+                onClick={() => { setSearchQuery(''); doSearch('', true); }}
                 className="absolute right-7 text-zinc-500 hover:text-zinc-300 transition-colors">
                 <X className="size-3.5" />
               </button>
@@ -233,44 +218,7 @@ export const WatchPartyPlayer: React.FC<WatchPartyPlayerProps> = ({
             </div>
           )}
 
-          {/* Paste URL toggle */}
-          <div className="px-4 pb-3">
-            <button onClick={() => setShowUrlInput(v => !v)}
-              className="flex items-center gap-1.5 text-[10px] text-zinc-500 hover:text-brand-cyan transition-colors">
-              <Link2 className="size-3" />
-              Or paste a link from Vimeo, Twitch, Facebook…
-              <ChevronRight className={`size-3 transition-transform ${showUrlInput ? 'rotate-90' : ''}`} />
-            </button>
 
-            {showUrlInput && (
-              <div className="mt-2 space-y-2">
-                <form onSubmit={handleUrlSubmit} className="flex gap-2">
-                  <div className="relative flex-1">
-                    <Link2 className="absolute left-2.5 top-1/2 -translate-y-1/2 size-3.5 text-zinc-500 pointer-events-none" />
-                    <Input type="url" placeholder="https://vimeo.com/..."
-                      value={urlInput}
-                      onChange={e => { setUrlInput(e.target.value); setUrlError(''); }}
-                      className="pl-8 h-8 text-xs bg-zinc-900 border-zinc-800 text-zinc-200 placeholder:text-zinc-600 focus-visible:ring-brand-cyan/40"
-                    />
-                  </div>
-                  <Button type="submit" disabled={!urlInput.trim()} size="sm"
-                    className="h-8 px-3 bg-brand-cyan hover:bg-brand-cyan/85 text-zinc-950 font-bold text-[11px] shrink-0 disabled:opacity-40">
-                    Play
-                  </Button>
-                </form>
-                {urlError && <p className="text-[10px] text-brand-rose">{urlError}</p>}
-                <div className="flex flex-wrap gap-1.5">
-                  {PLATFORMS.map(p => (
-                    <span key={p.label}
-                      className="px-2 py-0.5 rounded-full border text-[9px] bg-zinc-900/60"
-                      style={{ borderColor: `${p.color}30`, color: p.color }}>
-                      {p.label}
-                    </span>
-                  ))}
-                </div>
-              </div>
-            )}
-          </div>
         </div>
       )}
 
@@ -282,8 +230,11 @@ export const WatchPartyPlayer: React.FC<WatchPartyPlayerProps> = ({
           <div className="absolute inset-0 overflow-y-auto">
             <div className="px-3 py-2 flex items-center justify-between sticky top-0 bg-zinc-950/95 backdrop-blur-sm z-10 border-b border-zinc-900/50">
               <span className="text-[10px] text-zinc-500 font-medium">
-                {filteredResults.length} result{filteredResults.length !== 1 ? 's' : ''}
-                {filter !== 'all' && ` from ${SOURCE_META[filter].label}`}
+                {searchQuery ? (
+                  <>{filteredResults.length} result{filteredResults.length !== 1 ? 's' : ''}{filter !== 'all' && ` from ${SOURCE_META[filter].label}`}</>
+                ) : (
+                  <span className="text-brand-cyan uppercase tracking-wider font-bold text-[9px]">🔥 Trending Now</span>
+                )}
               </span>
               <div className="flex items-center gap-2">
                 {Object.entries(sources).map(([src, count]) => (
@@ -396,25 +347,7 @@ export const WatchPartyPlayer: React.FC<WatchPartyPlayerProps> = ({
           </div>
         )}
 
-        {/* Empty state */}
-        {showSearch && !isSearching && allResults.length === 0 && !searchQuery && (
-          <div className="absolute inset-0 flex flex-col items-center justify-center gap-4 text-center p-8">
-            <div className="relative">
-              <div className="size-16 rounded-2xl bg-zinc-900 border border-zinc-800 flex items-center justify-center">
-                <Popcorn className="size-7 text-zinc-600" />
-              </div>
-              <div className="absolute -top-1 -right-1 size-5 rounded-full bg-brand-cyan/10 border border-brand-cyan/30 flex items-center justify-center">
-                <Search className="size-2.5 text-brand-cyan" />
-              </div>
-            </div>
-            <div className="space-y-1.5 max-w-[220px]">
-              <p className="text-xs font-semibold text-zinc-300">Watch together</p>
-              <p className="text-[11px] text-zinc-500 leading-relaxed">
-                Search across <span className="text-red-400 font-medium">YouTube</span> and <span className="text-orange-400 font-medium">DailyMotion</span> simultaneously — results appear as you type.
-              </p>
-            </div>
-          </div>
-        )}
+        {/* Empty state is no longer needed since default search runs on mount */}
 
         {/* No results */}
         {showSearch && !isSearching && allResults.length === 0 && searchQuery.length > 2 && (
