@@ -96,7 +96,7 @@ export const Toolbar: React.FC<ToolbarProps> = ({
 
   return (
     <TooltipProvider delayDuration={200}>
-      <div className="flex items-center gap-1.5 sm:gap-2 bg-zinc-950/80 backdrop-blur-md px-2 py-1.5 sm:px-4 sm:py-2 border border-zinc-800/80 rounded-full shadow-2xl relative z-10">
+      <div className="flex items-center gap-1.5 sm:gap-2 bg-zinc-900/40 backdrop-blur-2xl px-2 py-1.5 sm:px-4 sm:py-2 border border-white/10 rounded-full shadow-[0_8px_32px_rgba(0,0,0,0.5)] relative z-10 hover:bg-zinc-900/50 transition-colors">
         
         {/* Toggle Audio */}
         <Tooltip>
@@ -105,7 +105,7 @@ export const Toolbar: React.FC<ToolbarProps> = ({
               type="button"
               variant={isMuted ? 'destructive' : 'outline'}
               size="icon-sm"
-              className="size-8 sm:size-9 rounded-full transition-all border-zinc-800/60 shadow-sm"
+              className="size-8 sm:size-9 rounded-full transition-all border-white/5 hover:bg-white/10 shadow-sm"
               onClick={onToggleMute}
             >
               {isMuted ? <MicOff className="size-3.5 sm:size-4" /> : <Mic className="size-3.5 sm:size-4" />}
@@ -123,7 +123,7 @@ export const Toolbar: React.FC<ToolbarProps> = ({
               type="button"
               variant={isCameraOff ? 'destructive' : 'outline'}
               size="icon-sm"
-              className="size-8 sm:size-9 rounded-full transition-all border-zinc-800/60 shadow-sm"
+              className="size-8 sm:size-9 rounded-full transition-all border-white/5 hover:bg-white/10 shadow-sm"
               onClick={onToggleCamera}
             >
               {isCameraOff ? <VideoOff className="size-3.5 sm:size-4" /> : <Video className="size-3.5 sm:size-4" />}
@@ -141,7 +141,7 @@ export const Toolbar: React.FC<ToolbarProps> = ({
               type="button"
               variant={isScreenSharing ? 'secondary' : 'outline'}
               size="icon-sm"
-              className={`size-8 sm:size-9 rounded-full transition-all border-zinc-800/60 shadow-sm ${isScreenSharing ? 'text-brand-cyan bg-zinc-900/80 border-brand-cyan/20' : ''}`}
+              className={`size-8 sm:size-9 rounded-full transition-all border-white/5 shadow-sm ${isScreenSharing ? 'text-brand-cyan bg-brand-cyan/20 border-brand-cyan/30' : 'hover:bg-white/10'}`}
               onClick={onToggleScreenShare}
             >
               <Monitor className="size-3.5 sm:size-4" />
@@ -152,7 +152,7 @@ export const Toolbar: React.FC<ToolbarProps> = ({
           </TooltipContent>
         </Tooltip>
 
-        <div className="h-5 sm:h-6 w-px bg-zinc-800/60 mx-0.5 sm:mx-1" />
+        <div className="h-5 sm:h-6 w-px bg-white/10 mx-0.5 sm:mx-1" />
 
 
         {/* Toggle Watch Party */}
@@ -162,7 +162,7 @@ export const Toolbar: React.FC<ToolbarProps> = ({
               type="button"
               variant={showWatchParty ? 'secondary' : 'outline'}
               size="icon-sm"
-              className={`size-8 sm:size-9 rounded-full transition-all border-zinc-800/60 shadow-sm ${showWatchParty ? 'text-brand-orange bg-zinc-900/80 border-brand-orange/20' : ''}`}
+              className={`size-8 sm:size-9 rounded-full transition-all border-white/5 shadow-sm ${showWatchParty ? 'text-brand-orange bg-brand-orange/20 border-brand-orange/30' : 'hover:bg-white/10'}`}
               onClick={onToggleWatchParty}
             >
               <Popcorn className="size-3.5 sm:size-4" />
@@ -180,7 +180,7 @@ export const Toolbar: React.FC<ToolbarProps> = ({
               type="button"
               variant={showChat ? 'secondary' : 'outline'}
               size="icon-sm"
-              className={`size-8 sm:size-9 rounded-full transition-all border-zinc-800/60 shadow-sm relative ${showChat ? 'text-brand-violet bg-zinc-900/80 border-brand-violet/20' : ''}`}
+              className={`size-8 sm:size-9 rounded-full transition-all border-white/5 shadow-sm relative ${showChat ? 'text-brand-violet bg-brand-violet/20 border-brand-violet/30' : 'hover:bg-white/10'}`}
               onClick={onToggleChat}
             >
               <MessageSquare className="size-3.5 sm:size-4" />
@@ -196,7 +196,7 @@ export const Toolbar: React.FC<ToolbarProps> = ({
           </TooltipContent>
         </Tooltip>
 
-        <div className="h-5 sm:h-6 w-px bg-zinc-800/60 mx-0.5 sm:mx-1" />
+        <div className="h-5 sm:h-6 w-px bg-white/10 mx-0.5 sm:mx-1" />
 
         {/* Raise Hand */}
         <Tooltip>
@@ -205,7 +205,7 @@ export const Toolbar: React.FC<ToolbarProps> = ({
               type="button"
               variant={isHandRaised ? 'secondary' : 'outline'}
               size="icon-sm"
-              className={`size-8 sm:size-9 rounded-full transition-all border-zinc-800/60 shadow-sm ${isHandRaised ? 'text-amber-400 bg-zinc-900/80 border-amber-400/20' : ''}`}
+              className={`size-8 sm:size-9 rounded-full transition-all border-white/5 shadow-sm ${isHandRaised ? 'text-amber-400 bg-amber-400/20 border-amber-400/30' : 'hover:bg-white/10'}`}
               onClick={onToggleHand}
             >
               <Hand className="size-3.5 sm:size-4" />
@@ -223,12 +223,12 @@ export const Toolbar: React.FC<ToolbarProps> = ({
               type="button"
               variant="outline"
               size="icon-sm"
-              className="size-8 sm:size-9 rounded-full transition-all border-zinc-800/60 shadow-sm hover:text-brand-emerald hover:border-brand-emerald/40"
+              className="size-8 sm:size-9 rounded-full transition-all border-white/5 shadow-sm hover:text-brand-emerald hover:border-brand-emerald/40 hover:bg-white/10"
             >
               <SmilePlus className="size-3.5 sm:size-4" />
             </Button>
           </PopoverTrigger>
-          <PopoverContent side="top" align="center" className="w-auto p-2 bg-zinc-900/90 backdrop-blur-md border-zinc-800 rounded-full flex gap-1 shadow-2xl mb-2">
+          <PopoverContent side="top" align="center" className="w-auto p-2 bg-zinc-900/60 backdrop-blur-2xl border-white/10 rounded-full flex gap-1 shadow-2xl mb-2">
             {['👍', '👎', '❤️', '😂', '🎉', '😮'].map((emoji) => (
               <Button
                 key={emoji}
@@ -243,7 +243,7 @@ export const Toolbar: React.FC<ToolbarProps> = ({
           </PopoverContent>
         </Popover>
 
-        <div className="h-5 sm:h-6 w-px bg-zinc-800/60 mx-0.5 sm:mx-1" />
+        <div className="h-5 sm:h-6 w-px bg-white/10 mx-0.5 sm:mx-1" />
 
         {/* End Call / Leave */}
         <Tooltip>

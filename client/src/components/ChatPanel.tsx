@@ -36,10 +36,10 @@ export const ChatPanel: React.FC<ChatPanelProps & { onClose?: () => void }> = ({
   };
 
   return (
-    <div className="flex flex-col h-full bg-zinc-950 border-l border-zinc-800 w-full sm:w-80 text-zinc-300">
+    <div className="flex flex-col h-full bg-zinc-950/60 backdrop-blur-3xl border-l border-white/5 w-full sm:w-80 text-zinc-300">
       
       {/* Sidebar Tabs */}
-      <div className="flex border-b border-zinc-800 relative pr-10">
+      <div className="flex border-b border-white/5 relative pr-10">
         <button
           onClick={() => setActiveTab('chat')}
           className={`flex-1 py-3 text-xs font-semibold flex items-center justify-center gap-1.5 border-b-2 transition-all ${activeTab === 'chat' ? 'border-brand-violet text-white bg-zinc-900/40' : 'border-transparent text-zinc-400 hover:text-zinc-200'}`}
@@ -100,20 +100,20 @@ export const ChatPanel: React.FC<ChatPanelProps & { onClose?: () => void }> = ({
                 <div ref={messagesEndRef} />
               </div>
             </ScrollArea>
-
-            {/* Chat Input */}
-            <form onSubmit={handleSubmit} className="p-3 border-t border-zinc-800 flex gap-1.5 bg-zinc-950">
+            <div className="p-3 border-t border-white/5 bg-zinc-950/40 shrink-0">
+            <form onSubmit={handleSubmit} className="flex gap-2 relative">
               <Input
-                type="text"
-                placeholder="Type a message..."
+                autoFocus
+                placeholder="Message room..."
                 value={inputText}
                 onChange={(e) => setInputText(e.target.value)}
-                className="bg-zinc-900 border-zinc-800 focus:border-zinc-700 text-xs h-8 text-zinc-200"
+                className="pr-10 h-10 bg-zinc-900/50 border-white/5 text-sm focus-visible:ring-brand-violet/50"
               />
               <Button type="submit" size="icon-sm" className="bg-brand-violet hover:bg-brand-violet/90 size-8 text-white">
                 <Send className="size-3.5" />
               </Button>
             </form>
+            </div>
           </>
         ) : (
           // Users list

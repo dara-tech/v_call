@@ -317,7 +317,7 @@ export const WatchPartyPlayer: React.FC<WatchPartyPlayerProps> = ({
                     onClick={() => handleSelectVideo(video)}
                     onMouseEnter={() => setHoveredId(`${video.source}-${video.id}`)}
                     onMouseLeave={() => setHoveredId(null)}
-                    className="w-full flex flex-col gap-2.5 group text-left focus:outline-none rounded-xl p-2 hover:bg-zinc-900/60 transition-colors"
+                    className="relative w-full flex flex-col gap-2.5 group text-left focus:outline-none rounded-2xl p-2 bg-transparent hover:bg-zinc-900/40 border border-transparent hover:border-white/10 hover:shadow-[0_8px_32px_rgba(34,211,238,0.05)] transition-all duration-300"
                   >
                     {/* Thumbnail */}
                     <div className="relative w-full aspect-video rounded-lg overflow-hidden bg-zinc-800">

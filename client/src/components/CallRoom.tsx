@@ -59,7 +59,7 @@ const RemotePeerVideo: React.FC<{ peer: PeerState }> = ({ peer }) => {
   }, [peer.stream]);
 
   return (
-    <div className={`relative w-full h-full bg-zinc-900/40 flex items-center justify-center overflow-hidden border-2 sm:rounded-lg shadow-lg transition-colors duration-300 ${isActiveSpeaker ? 'border-brand-emerald shadow-brand-emerald/20' : 'border-zinc-900'}`}>
+    <div className={`relative w-full h-full bg-zinc-900/40 flex items-center justify-center overflow-hidden border-2 sm:rounded-2xl transition-all duration-300 ${isActiveSpeaker ? 'border-brand-cyan shadow-[0_0_30px_rgba(34,211,238,0.3)] ring-2 ring-brand-cyan/50 scale-[1.02] z-10' : 'border-white/5 shadow-2xl'}`}>
       {peer.stream ? (
         <video
           ref={videoRef}
@@ -75,7 +75,7 @@ const RemotePeerVideo: React.FC<{ peer: PeerState }> = ({ peer }) => {
           <span className="text-xs">Connecting...</span>
         </div>
       )}
-      <div className="absolute top-4 left-4 flex items-center gap-2 bg-zinc-950/70 border border-zinc-800/80 px-2.5 py-1 rounded text-xs font-medium text-zinc-300 backdrop-blur-sm z-10 shadow-sm">
+      <div className="absolute bottom-4 left-4 flex items-center gap-2 bg-black/40 border border-white/10 px-3 py-1.5 rounded-full text-xs font-semibold text-white backdrop-blur-xl z-10 shadow-[0_4px_12px_rgba(0,0,0,0.5)]">
         <span>{peer.info.userName}</span>
         {peer.handRaised && (
           <span className="bg-amber-400 text-black px-1.5 py-0.5 rounded ml-1 animate-bounce">
@@ -355,10 +355,10 @@ export const CallRoom: React.FC<CallRoomProps> = ({
           )}
 
           {/* Local Video Picture-in-Picture Frame (PIP) */}
-          <div className={`absolute z-30 bg-zinc-950 border border-zinc-800 rounded-md overflow-hidden shadow-2xl pointer-events-auto transition-all ${
+          <div className={`absolute z-30 bg-zinc-900/50 backdrop-blur-xl border border-white/10 rounded-xl overflow-hidden shadow-[0_8px_32px_rgba(0,0,0,0.5)] pointer-events-auto transition-all ${
             showWatchParty
               ? 'bottom-2 right-2 w-32 aspect-video hidden sm:block' // smaller PIP in sidebar mode
-              : 'bottom-20 sm:bottom-24 right-4 w-24 sm:w-48 aspect-video hover:scale-105'
+              : 'bottom-20 sm:bottom-24 right-4 w-24 sm:w-48 aspect-video hover:scale-105 hover:shadow-[0_8px_32px_rgba(34,211,238,0.2)]'
           }`}>
             {localStream && !isCameraOff ? (
               <video
@@ -382,7 +382,7 @@ export const CallRoom: React.FC<CallRoomProps> = ({
               </div>
             )}
 
-            <div className="absolute bottom-2 left-2 bg-black/60 backdrop-blur-sm px-1.5 py-0.5 rounded text-[8px] text-zinc-400 font-mono flex items-center gap-1">
+            <div className="absolute bottom-2 left-2 bg-black/40 backdrop-blur-xl border border-white/10 px-2 py-1 rounded-full text-[9px] text-white font-semibold flex items-center gap-1 shadow-md">
               You ({userName})
               {isHandRaised && <Hand className="size-2 text-amber-400 animate-bounce" />}
             </div>
