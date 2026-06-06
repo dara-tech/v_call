@@ -367,7 +367,10 @@ export const WatchPartyPlayer: React.FC<WatchPartyPlayerProps> = ({
                   handleSeek(state.playedSeconds);
                 }
               }}
-              config={{ youtube: { playerVars: { disablekb: 1 } } }}
+              config={{ 
+                youtube: { playerVars: { disablekb: 1 } },
+                dailymotion: { params: { api: 1, 'endscreen-enable': false, origin: window.location.origin } }
+              }}
             />
           </div>
         )}

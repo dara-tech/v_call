@@ -1,0 +1,23 @@
+<!DOCTYPE html>
+<html>
+<body>
+  <div id="root"></div>
+  <script src="https://unpkg.com/react@18/umd/react.development.js"></script>
+  <script src="https://unpkg.com/react-dom@18/umd/react-dom.development.js"></script>
+  <script src="https://unpkg.com/babel-standalone@6/babel.min.js"></script>
+  <script src="https://unpkg.com/react-player/dist/ReactPlayer.standalone.js"></script>
+  <script type="text/babel">
+    const App = () => {
+      return (
+        <ReactPlayer 
+          url="https://www.dailymotion.com/video/x5pw0zi" 
+          playing={true} 
+          controls={true}
+          config={{ dailymotion: { params: { origin: window.location.origin } } }}
+        />
+      );
+    }
+    ReactDOM.render(<App />, document.getElementById('root'));
+  </script>
+</body>
+</html>
