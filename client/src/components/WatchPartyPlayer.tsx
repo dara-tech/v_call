@@ -358,7 +358,7 @@ export const WatchPartyPlayer: React.FC<WatchPartyPlayerProps> = ({
 
         {/* Player */}
         {isPlayerVisible && (
-          <div className="absolute inset-0 bg-black">
+          <div className="absolute top-0 inset-x-0 bottom-[84px] bg-black shadow-2xl">
             {isDailyMotion && dmVideoId ? (
               <DailyMotionSyncPlayer
                 ref={playerRef}
