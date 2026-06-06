@@ -1,24 +1,43 @@
-import 'dotenv/config';
 import express from 'express';
 import { createServer } from 'http';
 import { Server } from 'socket.io';
 import cors from 'cors';
+import dotenv from 'dotenv';
+import { WebSocketServer, WebSocket } from 'ws';
+import ytSearch from 'yt-search';
+
+// Load environment variables
+dotenv.config();
 
 const app = express();
 app.use(cors());
 
+// YouTube Search API
+app.get('/api/youtube/search', async (req, res) => {
+  try {
+    const query = req.query.q;
+    if (!query) {
+      return res.status(400).json({ error: 'Query parameter q is required' });
+    }
+    const result = await ytSearch(query);
+    // Return top 15 video results
+    const videos = result.videos.slice(0, 15).map(v => ({
+      id: v.videoId,
+      title: v.title,
+      thumbnail: v.thumbnail,
+      duration: v.timestamp,
+      author: v.author.name
+    }));
+    res.json({ videos });
+  } catch (error) {
+    console.error('[YouTube API Error]', error);
+    res.status(500).json({ error: 'Failed to fetch YouTube results' });
+  }
+});
+
 // Health check endpoint
 app.get('/health', (req, res) => {
   res.json({ status: 'ok', timestamp: new Date() });
-});
-
-// Serve Gemini API Key securely to the client
-app.get('/api/live-key', (req, res) => {
-  const key = process.env.GEMINI_API_KEY;
-  if (!key) {
-    return res.status(500).json({ error: 'GEMINI_API_KEY is not set on the server' });
-  }
-  res.json({ success: true, key });
 });
 
 const httpServer = createServer(app);
@@ -35,6 +54,9 @@ const rooms = {};
 
 // Map socketId -> roomId (for quick lookup on disconnect)
 const socketToRoom = {};
+
+// Map virtual IDs to host socket IDs
+const virtualToHost = {};
 
 io.on('connection', (socket) => {
   console.log(`[Socket Connected] ID: ${socket.id}`);
@@ -81,17 +103,66 @@ io.on('connection', (socket) => {
     });
   });
 
+  // Handle adding a virtual peer (like an AI agent hosted by a client)
+  socket.on('add-virtual-user', ({ roomId, virtualId, userName }) => {
+    if (!rooms[roomId]) return;
+    
+    virtualToHost[virtualId] = socket.id;
+    rooms[roomId].participants[virtualId] = { userId: virtualId, userName };
+    
+    console.log(`[Virtual User] Added "${userName}" (${virtualId}) to room "${roomId}" hosted by ${socket.id}`);
+    
+    socket.to(roomId).emit('user-joined', {
+      socketId: virtualId,
+      userId: virtualId,
+      userName,
+    });
+  });
+
+  // Handle removing a virtual peer
+  socket.on('remove-virtual-user', ({ roomId, virtualId }) => {
+    if (!rooms[roomId]) return;
+    const room = rooms[roomId];
+    if (room && room.participants[virtualId]) {
+      console.log(`[Leave Room] Virtual User (${virtualId}) left room "${roomId}"`);
+      delete room.participants[virtualId];
+      delete virtualToHost[virtualId];
+      socket.to(roomId).emit('user-left', {
+        socketId: virtualId,
+        userId: virtualId,
+      });
+    }
+  });
+
   // Relay signal data (offers, answers, ICE candidates) between peers
-  socket.on('relay-signal', ({ targetSocketId, signalData }) => {
+  socket.on('relay-signal', ({ targetSocketId, signalData, virtualSenderId }) => {
     if (!targetSocketId) {
       console.warn(`[Relay Failed] No targetSocketId specified from ${socket.id}`);
       return;
     }
-    // Relay signal with sender's socket ID
-    io.to(targetSocketId).emit('signal-received', {
-      senderSocketId: socket.id,
+    
+    const actualTargetId = virtualToHost[targetSocketId] || targetSocketId;
+    const isTargetVirtual = !!virtualToHost[targetSocketId];
+
+    io.to(actualTargetId).emit('signal-received', {
+      senderSocketId: virtualSenderId || socket.id,
       signalData,
+      targetVirtualId: isTargetVirtual ? targetSocketId : undefined
     });
+  });
+
+  // Relay reactions
+  socket.on('reaction', (data) => {
+    if (data.roomId) {
+      socket.to(data.roomId).emit('reaction', data);
+    }
+  });
+
+  // Relay hand raise
+  socket.on('toggle-hand', (data) => {
+    if (data.roomId) {
+      socket.to(data.roomId).emit('toggle-hand', data);
+    }
   });
 
   // Handle peer disconnected
@@ -127,6 +198,80 @@ function handleLeave(socket) {
     }
   }
 }
+
+// --- Gemini Live API WebSocket Proxy ---
+const wss = new WebSocketServer({ server: httpServer, path: '/ai-proxy' });
+
+wss.on('connection', (clientWs) => {
+  console.log('[AI Proxy] Client connected to AI Proxy');
+  
+  const apiKey = process.env.GEMINI_API_KEY;
+  if (!apiKey) {
+    console.error('[AI Proxy] GEMINI_API_KEY is not set');
+    clientWs.close(1011, 'Server configuration error');
+    return;
+  }
+
+  // Connect to Gemini Multimodal Live API
+  const geminiUrl = `wss://generativelanguage.googleapis.com/ws/google.ai.generativelanguage.v1alpha.GenerativeService.BidiGenerateContent?key=${apiKey}`;
+  const geminiWs = new WebSocket(geminiUrl);
+
+  const messageBuffer = [];
+
+  geminiWs.on('open', () => {
+    console.log('[AI Proxy] Connected to Gemini API');
+    // Flush buffered messages
+    while (messageBuffer.length > 0) {
+      const msg = messageBuffer.shift();
+      geminiWs.send(msg.data, { binary: msg.isBinary });
+    }
+  });
+
+  geminiWs.on('message', (data, isBinary) => {
+    if (!isBinary) {
+      const str = data.toString();
+      if (!str.includes('serverContent') || !str.includes('modelTurn')) {
+        console.log('[AI Proxy] Gemini -> Client:', str.substring(0, 100));
+      }
+    }
+    // Forward Gemini response to Client
+    if (clientWs.readyState === WebSocket.OPEN) {
+      clientWs.send(data, { binary: isBinary });
+    }
+  });
+
+  geminiWs.on('close', () => {
+    console.log('[AI Proxy] Gemini API connection closed');
+    clientWs.close();
+  });
+
+  geminiWs.on('error', (err) => {
+    console.error('[AI Proxy] Gemini WS Error:', err);
+  });
+
+  // Forward Client messages to Gemini
+  clientWs.on('message', (data, isBinary) => {
+    // Only log the first few characters to avoid spam
+    if (!isBinary) {
+      const str = data.toString();
+      if (str.includes('realtimeInput')) {
+        // console.log('[AI Proxy] Forwarding realtimeInput to Gemini');
+      } else {
+        console.log('[AI Proxy] Client -> Gemini:', str.substring(0, 100));
+      }
+    }
+    if (geminiWs.readyState === WebSocket.OPEN) {
+      geminiWs.send(data, { binary: isBinary });
+    } else {
+      messageBuffer.push({ data, isBinary });
+    }
+  });
+
+  clientWs.on('close', () => {
+    console.log('[AI Proxy] Client disconnected from AI Proxy');
+    geminiWs.close();
+  });
+});
 
 const PORT = process.env.PORT || 5001;
 httpServer.listen(PORT, () => {

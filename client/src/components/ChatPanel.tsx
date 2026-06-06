@@ -12,11 +12,12 @@ interface ChatPanelProps {
   onSendMessage: (text: string) => void;
 }
 
-export const ChatPanel: React.FC<ChatPanelProps> = ({
+export const ChatPanel: React.FC<ChatPanelProps & { onClose?: () => void }> = ({
   messages,
   peers,
   selfName,
   onSendMessage,
+  onClose,
 }) => {
   const [inputText, setInputText] = useState('');
   const [activeTab, setActiveTab] = useState<'chat' | 'users'>('chat');
@@ -35,10 +36,10 @@ export const ChatPanel: React.FC<ChatPanelProps> = ({
   };
 
   return (
-    <div className="flex flex-col h-full bg-zinc-950 border-l border-zinc-800 w-80 text-zinc-300">
+    <div className="flex flex-col h-full bg-zinc-950 border-l border-zinc-800 w-full sm:w-80 text-zinc-300">
       
       {/* Sidebar Tabs */}
-      <div className="flex border-b border-zinc-800">
+      <div className="flex border-b border-zinc-800 relative pr-10">
         <button
           onClick={() => setActiveTab('chat')}
           className={`flex-1 py-3 text-xs font-semibold flex items-center justify-center gap-1.5 border-b-2 transition-all ${activeTab === 'chat' ? 'border-brand-violet text-white bg-zinc-900/40' : 'border-transparent text-zinc-400 hover:text-zinc-200'}`}
@@ -52,6 +53,14 @@ export const ChatPanel: React.FC<ChatPanelProps> = ({
         >
           <Users className="size-3.5" />
           Participants ({peers.length + 1})
+        </button>
+        
+        {/* Mobile Close Button */}
+        <button 
+          onClick={onClose}
+          className="absolute right-0 inset-y-0 w-10 flex items-center justify-center text-zinc-400 hover:text-white sm:hidden border-l border-zinc-800"
+        >
+          <span className="text-lg leading-none">&times;</span>
         </button>
       </div>
 

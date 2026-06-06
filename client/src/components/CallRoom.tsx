@@ -4,11 +4,13 @@ import type { PeerState } from '../hooks/useWebRTC';
 import { Toolbar } from './Toolbar';
 import { Diagnostics } from './Diagnostics';
 import { ChatPanel } from './ChatPanel';
-import { AIPanel } from './AIPanel';
 import { DeviceSelect } from './DeviceSelect';
+import { WatchPartyPlayer } from './WatchPartyPlayer';
 import { Dialog, DialogContent, DialogHeader, DialogTitle } from '@/components/ui/dialog';
 import { Button } from '@/components/ui/button';
-import { MicOff, VideoOff, Settings, Link, Users } from 'lucide-react';
+import { MicOff, VideoOff, Settings, Link, Users, Sparkles, Hand } from 'lucide-react';
+import confetti from 'canvas-confetti';
+import { Toaster, toast } from 'sonner';
 
 interface CallRoomProps {
   roomId: string;
@@ -22,6 +24,7 @@ interface CallRoomProps {
 // Sub-component for remote peer video to handle its own stream binding
 const RemotePeerVideo: React.FC<{ peer: PeerState }> = ({ peer }) => {
   const videoRef = useRef<HTMLVideoElement>(null);
+  const [isActiveSpeaker, setIsActiveSpeaker] = useState(false);
 
   useEffect(() => {
     if (videoRef.current && peer.stream) {
@@ -29,11 +32,35 @@ const RemotePeerVideo: React.FC<{ peer: PeerState }> = ({ peer }) => {
       videoRef.current.play().catch((err) => {
         console.warn('[WebRTC] Auto-play was prevented by the browser:', err);
       });
+
+      // Active Speaker Detection
+      let audioCtx: AudioContext;
+      let interval: number;
+      try {
+        audioCtx = new window.AudioContext();
+        const analyser = audioCtx.createAnalyser();
+        const source = audioCtx.createMediaStreamSource(peer.stream);
+        source.connect(analyser);
+        analyser.fftSize = 256;
+        const dataArray = new Uint8Array(analyser.frequencyBinCount);
+
+        interval = window.setInterval(() => {
+          analyser.getByteFrequencyData(dataArray);
+          const sum = dataArray.reduce((a, b) => a + b, 0);
+          const average = sum / dataArray.length;
+          setIsActiveSpeaker(average > 15);
+        }, 100);
+      } catch (err) {}
+
+      return () => {
+        if (interval) clearInterval(interval);
+        if (audioCtx && audioCtx.state !== 'closed') audioCtx.close();
+      };
     }
   }, [peer.stream]);
 
   return (
-    <div className="relative w-full h-full bg-zinc-900/40 flex items-center justify-center overflow-hidden border border-zinc-900 rounded-lg shadow-lg">
+    <div className={`relative w-full h-full bg-zinc-900/40 flex items-center justify-center overflow-hidden border-2 sm:rounded-lg shadow-lg transition-colors duration-300 ${isActiveSpeaker ? 'border-brand-emerald shadow-brand-emerald/20' : 'border-zinc-900'}`}>
       {peer.stream ? (
         <video
           ref={videoRef}
@@ -49,8 +76,23 @@ const RemotePeerVideo: React.FC<{ peer: PeerState }> = ({ peer }) => {
           <span className="text-xs">Connecting...</span>
         </div>
       )}
-      <div className="absolute top-4 left-4 bg-zinc-950/70 border border-zinc-800/80 px-2.5 py-1 rounded text-xs font-medium text-zinc-300 backdrop-blur-sm z-10 shadow-sm">
-        {peer.info.userName}
+      <div className="absolute top-4 left-4 flex items-center gap-2 bg-zinc-950/70 border border-zinc-800/80 px-2.5 py-1 rounded text-xs font-medium text-zinc-300 backdrop-blur-sm z-10 shadow-sm">
+        <span>{peer.info.userName}</span>
+        {peer.handRaised && (
+          <span className="bg-amber-400 text-black px-1.5 py-0.5 rounded ml-1 animate-bounce">
+            <Hand className="size-3" />
+          </span>
+        )}
+        {peer.aiState && (
+          <span className={`px-1.5 py-0.5 rounded text-[9px] uppercase tracking-wider font-bold ${
+            peer.aiState === 'connected' ? 'bg-brand-emerald/20 text-brand-emerald' :
+            peer.aiState === 'reconnecting' ? 'bg-amber-500/20 text-amber-500 animate-pulse' :
+            peer.aiState === 'disconnected' ? 'bg-brand-rose/20 text-brand-rose' :
+            'bg-brand-cyan/20 text-brand-cyan animate-pulse'
+          }`}>
+            {peer.aiState}
+          </span>
+        )}
       </div>
     </div>
   );
@@ -73,17 +115,23 @@ export const CallRoom: React.FC<CallRoomProps> = ({
     isScreenSharing,
     chatMessages,
     stats,
+    videoSyncState,
     sendChatMessage,
+    broadcastVideoState,
     toggleMute,
     toggleCamera,
     toggleScreenShare,
+    isHandRaised,
+    toggleHand,
+    sendReaction,
     leaveCall,
     initLocalMedia,
+    summonAI,
   } = useWebRTC(roomId, userName, userId);
 
   // UI state toggles
   const [showChat, setShowChat] = useState(false);
-  const [showAI, setShowAI] = useState(false);
+  const [showWatchParty, setShowWatchParty] = useState(false);
   const [showStats, setShowStats] = useState(false);
   const [showSettings, setShowSettings] = useState(false);
   const [activeAudioId, setActiveAudioId] = useState(initialAudioId);
@@ -118,6 +166,44 @@ export const CallRoom: React.FC<CallRoomProps> = ({
       }
     }
   }, [chatMessages, showChat]);
+
+  // Auto-open Watch Party
+  useEffect(() => {
+    if (videoSyncState.url && videoSyncState.playing) {
+      setShowWatchParty(true);
+    }
+  }, [videoSyncState.url, videoSyncState.playing]);
+
+  // Handle Reactions via custom event
+  useEffect(() => {
+    const handleReaction = (e: any) => {
+      const { emoji } = e.detail;
+      const scalar = 2;
+      const defaults = {
+        spread: 360,
+        ticks: 60,
+        gravity: 0,
+        decay: 0.96,
+        startVelocity: 20,
+        shapes: [confetti.shapeFromText({ text: emoji, scalar })],
+        scalar
+      };
+
+      const shoot = () => {
+        confetti({
+          ...defaults,
+          particleCount: 15,
+        });
+      };
+      
+      setTimeout(shoot, 0);
+      setTimeout(shoot, 100);
+      setTimeout(shoot, 200);
+    };
+
+    window.addEventListener('reaction-received', handleReaction);
+    return () => window.removeEventListener('reaction-received', handleReaction);
+  }, []);
 
   // Handle hardware device swaps in-call
   const handleAudioSwap = (deviceId: string) => {
@@ -156,10 +242,11 @@ export const CallRoom: React.FC<CallRoomProps> = ({
 
   return (
     <div className="flex flex-col h-screen w-screen overflow-hidden bg-zinc-950 font-sans text-zinc-300 relative">
+      <Toaster theme="dark" position="top-right" />
       
       {/* Header Bar */}
-      <header className="h-14 border-b border-zinc-900 bg-zinc-950/60 px-6 flex items-center justify-between backdrop-blur-md shrink-0">
-        <div className="flex items-center gap-3">
+      <header className="absolute top-0 inset-x-0 h-14 border-b border-zinc-900/50 bg-gradient-to-b from-zinc-950/80 to-transparent px-4 sm:px-6 flex items-center justify-between z-30 shrink-0 pointer-events-none">
+        <div className="flex items-center gap-3 pointer-events-auto">
           <span className="font-bold text-white tracking-wide text-xs uppercase">V-Call</span>
           <div className="h-4 w-px bg-zinc-800" />
           <div className="flex items-center gap-2">
@@ -192,7 +279,16 @@ export const CallRoom: React.FC<CallRoomProps> = ({
         </div>
 
         {/* Header Right Controls */}
-        <div className="flex items-center gap-2">
+        <div className="flex items-center gap-2 pointer-events-auto">
+          <Button
+            variant="outline"
+            size="sm"
+            onClick={summonAI}
+            className="text-brand-cyan hover:bg-brand-cyan/20 border-brand-cyan/50 bg-brand-cyan/10 gap-1.5 h-7 text-[10px] font-semibold tracking-wide uppercase px-3"
+          >
+            <Sparkles className="size-3" />
+            Summon AI
+          </Button>
           <Button
             variant="ghost"
             size="icon-sm"
@@ -205,20 +301,41 @@ export const CallRoom: React.FC<CallRoomProps> = ({
       </header>
 
       {/* Main Container */}
-      <div className="flex-1 flex overflow-hidden">
+      <div className={`flex-1 flex overflow-hidden pt-14 ${showWatchParty ? 'flex-col sm:flex-row' : ''}`}>
         
-        {/* Video Area Grid */}
-        <div className="flex-1 flex flex-col p-4 relative bg-zinc-950 overflow-y-auto">
+        {/* Watch Party Main Presentation Area */}
+        {showWatchParty && (
+          <div className="flex-1 bg-black relative z-10 flex pointer-events-auto">
+            <WatchPartyPlayer 
+              videoSyncState={videoSyncState}
+              broadcastVideoState={broadcastVideoState}
+              onClose={() => setShowWatchParty(false)}
+            />
+          </div>
+        )}
+
+        {/* Video Area (Grid or Sidebar) */}
+        <div className={`relative bg-zinc-950 flex flex-col transition-all duration-300 ${
+          showWatchParty
+            ? 'w-full h-40 sm:h-full sm:w-72 border-t sm:border-t-0 sm:border-l border-zinc-900 shrink-0 p-2 overflow-y-auto overflow-x-auto sm:overflow-x-hidden'
+            : 'flex-1 p-0 sm:p-4 overflow-y-auto'
+        }`}>
           
           {hasPeers ? (
-             <div className={`w-full h-full max-w-7xl mx-auto grid gap-4 ${gridLayoutClass} auto-rows-fr`}>
+             <div className={
+               showWatchParty 
+                 ? "flex flex-row sm:flex-col gap-2 w-max sm:w-full h-full pb-20 sm:pb-0"
+                 : `w-full h-full max-w-7xl mx-auto grid gap-4 ${gridLayoutClass} auto-rows-fr`
+             }>
                 {peerList.map((peer) => (
-                  <RemotePeerVideo key={peer.info.socketId} peer={peer} />
+                  <div key={peer.info.socketId} className={showWatchParty ? "w-48 sm:w-full shrink-0 aspect-video" : "w-full h-full"}>
+                    <RemotePeerVideo peer={peer} />
+                  </div>
                 ))}
              </div>
           ) : (
             // Lobby placeholder when waiting
-            <div className="w-full h-full flex flex-col items-center justify-center">
+            <div className={`w-full h-full flex flex-col items-center justify-center ${showWatchParty ? 'opacity-50 scale-75' : ''}`}>
               <div className="flex flex-col items-center gap-4 text-center p-8 max-w-sm">
                 <div className="size-12 rounded-full border border-dashed border-zinc-700 flex items-center justify-center animate-spin border-t-zinc-400" />
                 <div className="space-y-1">
@@ -232,7 +349,11 @@ export const CallRoom: React.FC<CallRoomProps> = ({
           )}
 
           {/* Local Video Picture-in-Picture Frame (PIP) */}
-          <div className="absolute bottom-24 right-4 z-30 w-40 sm:w-48 aspect-video bg-zinc-950 border border-zinc-800 rounded-md overflow-hidden shadow-2xl transition-transform hover:scale-105 group">
+          <div className={`absolute z-30 bg-zinc-950 border border-zinc-800 rounded-md overflow-hidden shadow-2xl pointer-events-auto transition-all ${
+            showWatchParty
+              ? 'bottom-2 right-2 w-32 aspect-video hidden sm:block' // smaller PIP in sidebar mode
+              : 'bottom-20 sm:bottom-24 right-4 w-24 sm:w-48 aspect-video hover:scale-105'
+          }`}>
             {localStream && !isCameraOff ? (
               <video
                 ref={localVideoRef}
@@ -255,60 +376,78 @@ export const CallRoom: React.FC<CallRoomProps> = ({
               </div>
             )}
 
-            <div className="absolute bottom-2 left-2 bg-black/60 backdrop-blur-sm px-1.5 py-0.5 rounded text-[8px] text-zinc-400 font-mono">
+            <div className="absolute bottom-2 left-2 bg-black/60 backdrop-blur-sm px-1.5 py-0.5 rounded text-[8px] text-zinc-400 font-mono flex items-center gap-1">
               You ({userName})
+              {isHandRaised && <Hand className="size-2 text-amber-400 animate-bounce" />}
             </div>
           </div>
 
-          {/* Floating Call Quality Diagnostics display */}
-          {showStats && hasPeers && (
-            <div className="absolute top-6 right-6 z-20">
-              <Diagnostics stats={stats} />
+          {/* Bottom Floating Control Bar (Normal Mode) */}
+          {!showWatchParty && (
+            <div className="absolute bottom-8 left-1/2 -translate-x-1/2 z-40">
+              <Toolbar
+                isMuted={isMuted}
+                isCameraOff={isCameraOff}
+                isScreenSharing={isScreenSharing}
+                showChat={showChat}
+                showStats={showStats}
+                showWatchParty={showWatchParty}
+                unreadCount={unreadCount}
+                isHandRaised={isHandRaised}
+                onToggleMute={toggleMute}
+                onToggleCamera={toggleCamera}
+                onToggleScreenShare={toggleScreenShare}
+                onToggleChat={() => setShowChat(!showChat)}
+                onToggleStats={() => setShowStats(!showStats)}
+                onToggleWatchParty={() => setShowWatchParty(!showWatchParty)}
+                onToggleHand={toggleHand}
+                onSendReaction={sendReaction}
+                onLeaveCall={handleExitRoom}
+              />
             </div>
           )}
-
-          {/* Bottom Floating Control Bar */}
-          <div className="absolute bottom-8 left-1/2 -translate-x-1/2 z-40">
-            <Toolbar
-              isMuted={isMuted}
-              isCameraOff={isCameraOff}
-              isScreenSharing={isScreenSharing}
-              showChat={showChat}
-              showStats={showStats}
-              showAI={showAI}
-              unreadCount={unreadCount}
-              onToggleMute={toggleMute}
-              onToggleCamera={toggleCamera}
-              onToggleScreenShare={toggleScreenShare}
-              onToggleChat={() => setShowChat(!showChat)}
-              onToggleStats={() => setShowStats(!showStats)}
-              onToggleAI={() => setShowAI(!showAI)}
-              onLeaveCall={handleExitRoom}
-            />
-          </div>
 
         </div>
 
         {/* Collapsible Chat & Participants Sidebar */}
         {showChat && (
-          <div className="h-full shrink-0 flex">
+          <div className="absolute inset-0 sm:relative z-50 sm:z-20 h-full w-full sm:w-[360px] shrink-0 flex pointer-events-auto border-l border-zinc-900">
             <ChatPanel
               messages={chatMessages}
               peers={peerList}
               selfName={userName}
               onSendMessage={sendChatMessage}
+              onClose={() => setShowChat(false)}
             />
           </div>
         )}
 
-        {/* AI Assistant Sidebar */}
-        {showAI && (
-          <div className="h-full shrink-0 flex">
-            <AIPanel />
-          </div>
-        )}
-
       </div>
+
+      {/* Floating Control Bar (Presentation Mode - Anchored to entire screen) */}
+      {showWatchParty && (
+        <div className="absolute bottom-6 left-1/2 -translate-x-1/2 sm:-translate-x-[calc(50%+9rem)] z-50 pointer-events-auto transition-all">
+          <Toolbar
+            isMuted={isMuted}
+            isCameraOff={isCameraOff}
+            isScreenSharing={isScreenSharing}
+            showChat={showChat}
+            showStats={showStats}
+            showWatchParty={showWatchParty}
+            unreadCount={unreadCount}
+            isHandRaised={isHandRaised}
+            onToggleMute={toggleMute}
+            onToggleCamera={toggleCamera}
+            onToggleScreenShare={toggleScreenShare}
+            onToggleChat={() => setShowChat(!showChat)}
+            onToggleStats={() => setShowStats(!showStats)}
+            onToggleWatchParty={() => setShowWatchParty(!showWatchParty)}
+            onToggleHand={toggleHand}
+            onSendReaction={sendReaction}
+            onLeaveCall={handleExitRoom}
+          />
+        </div>
+      )}
 
       {/* Hardware Device Swapping Dialog modal */}
       <Dialog open={showSettings} onOpenChange={setShowSettings}>
