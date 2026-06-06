@@ -183,7 +183,7 @@ export const WatchPartyPlayer: React.FC<WatchPartyPlayerProps> = ({
             height="100%"
             onPlay={handlePlay}
             onPause={handlePause}
-            onProgress={(state) => {
+            onProgress={(state: { playedSeconds: number }) => {
               if (Math.abs(state.playedSeconds - videoSyncState.playedSeconds) > 3) {
                 handleSeek(state.playedSeconds);
               }

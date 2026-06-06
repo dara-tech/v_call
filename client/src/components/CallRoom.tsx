@@ -2,7 +2,6 @@ import React, { useEffect, useRef, useState, useMemo } from 'react';
 import { useWebRTC } from '../hooks/useWebRTC';
 import type { PeerState } from '../hooks/useWebRTC';
 import { Toolbar } from './Toolbar';
-import { Diagnostics } from './Diagnostics';
 import { ChatPanel } from './ChatPanel';
 import { DeviceSelect } from './DeviceSelect';
 import { WatchPartyPlayer } from './WatchPartyPlayer';
@@ -10,7 +9,7 @@ import { Dialog, DialogContent, DialogHeader, DialogTitle } from '@/components/u
 import { Button } from '@/components/ui/button';
 import { MicOff, VideoOff, Settings, Link, Users, Sparkles, Hand } from 'lucide-react';
 import confetti from 'canvas-confetti';
-import { Toaster, toast } from 'sonner';
+import { Toaster } from 'sonner';
 
 interface CallRoomProps {
   roomId: string;
