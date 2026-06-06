@@ -1,5 +1,7 @@
 import React, { useRef, useEffect, useState, useCallback } from 'react';
 import ReactPlayerImport from 'react-player';
+import { DailyMotionSyncPlayer } from './DailyMotionSyncPlayer';
+
 const ReactPlayer = (ReactPlayerImport as any).default || ReactPlayerImport;
 import { Button } from '@/components/ui/button';
 import { Input } from '@/components/ui/input';
@@ -160,6 +162,10 @@ export const WatchPartyPlayer: React.FC<WatchPartyPlayerProps> = ({
 
   const isPlayerVisible = !showSearch && !!videoSyncState.url;
   const hasResults = allResults.length > 0 && !isSearching;
+
+  // Parse DailyMotion specifically because react-player's DM integration is broken
+  const isDailyMotion = videoSyncState.url?.includes('dailymotion.com');
+  const dmVideoId = isDailyMotion ? videoSyncState.url?.split('/video/')[1]?.split('?')[0] : null;
 
   return (
     <div className="flex flex-col h-full w-full bg-zinc-950 overflow-hidden">
@@ -353,25 +359,40 @@ export const WatchPartyPlayer: React.FC<WatchPartyPlayerProps> = ({
         {/* Player */}
         {isPlayerVisible && (
           <div className="absolute inset-0 bg-black">
-            <ReactPlayer
-              ref={playerRef}
-              url={videoSyncState.url!}
-              playing={isPlaying}
-              controls={true}
-              width="100%"
-              height="100%"
-              onPlay={handlePlay}
-              onPause={handlePause}
-              onProgress={(state: { playedSeconds: number }) => {
-                if (Math.abs(state.playedSeconds - videoSyncState.playedSeconds) > 3) {
-                  handleSeek(state.playedSeconds);
-                }
-              }}
-              config={{ 
-                youtube: { playerVars: { disablekb: 1 } },
-                dailymotion: { params: { api: 1, 'endscreen-enable': false, origin: window.location.origin } }
-              }}
-            />
+            {isDailyMotion && dmVideoId ? (
+              <DailyMotionSyncPlayer
+                ref={playerRef}
+                videoId={dmVideoId}
+                playing={isPlaying}
+                onPlay={handlePlay}
+                onPause={handlePause}
+                onProgress={(state) => {
+                  if (Math.abs(state.playedSeconds - videoSyncState.playedSeconds) > 3) {
+                    handleSeek(state.playedSeconds);
+                  }
+                }}
+              />
+            ) : (
+              <ReactPlayer
+                ref={playerRef}
+                url={videoSyncState.url!}
+                playing={isPlaying}
+                controls={true}
+                width="100%"
+                height="100%"
+                onPlay={handlePlay}
+                onPause={handlePause}
+                onProgress={(state: { playedSeconds: number }) => {
+                  if (Math.abs(state.playedSeconds - videoSyncState.playedSeconds) > 3) {
+                    handleSeek(state.playedSeconds);
+                  }
+                }}
+                config={{ 
+                  youtube: { playerVars: { disablekb: 1 } },
+                  dailymotion: { params: { api: 1, 'endscreen-enable': false, origin: window.location.origin } }
+                }}
+              />
+            )}
           </div>
         )}
 
