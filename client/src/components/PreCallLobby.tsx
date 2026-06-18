@@ -7,10 +7,11 @@ import { Mic, MicOff, Video, VideoOff, Settings, Keyboard } from 'lucide-react';
 interface PreCallLobbyProps {
   onJoin: (room: string, name: string, audioId: string, videoId: string) => void;
   defaultRoom: string;
+  defaultName?: string;
 }
 
-export const PreCallLobby: React.FC<PreCallLobbyProps> = ({ onJoin, defaultRoom }) => {
-  const [name, setName] = useState('');
+export const PreCallLobby: React.FC<PreCallLobbyProps> = ({ onJoin, defaultRoom, defaultName = '' }) => {
+  const [name, setName] = useState(defaultName);
   const [room, setRoom] = useState(defaultRoom);
   const [selectedAudio, setSelectedAudio] = useState('');
   const [selectedVideo, setSelectedVideo] = useState('');

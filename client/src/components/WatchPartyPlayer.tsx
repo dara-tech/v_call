@@ -99,7 +99,7 @@ export const WatchPartyPlayer: React.FC<WatchPartyPlayerProps> = ({
     setIsSearching(true);
     setFilter('all');
     try {
-      const BASE = import.meta.env.VITE_SERVER_URL || 'http://localhost:5001';
+      const BASE = import.meta.env.VITE_SERVER_URL || "http://localhost:5002";
       const res = await fetch(`${BASE}/api/search?q=${encodeURIComponent(queryToUse)}`);
       const data = await res.json();
       if (data.videos) setAllResults(data.videos);

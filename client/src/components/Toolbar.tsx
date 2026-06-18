@@ -1,37 +1,32 @@
-import React, { useEffect } from 'react';
-import { Button } from '@/components/ui/button';
-import {
-  Mic,
-  MicOff,
-  Video,
-  VideoOff,
-  Monitor,
-  MessageSquare,
-  PhoneOff,
-  Popcorn,
-  Hand,
-  SmilePlus,
+import React from 'react';
+import { Button } from './ui/button';
+import { Tooltip, TooltipContent, TooltipProvider, TooltipTrigger } from './ui/tooltip';
+import { 
+  Mic, 
+  MicOff, 
+  Video, 
+  VideoOff, 
+  Monitor, 
+  PhoneOff, 
+  Popcorn
 } from 'lucide-react';
-import { Tooltip, TooltipContent, TooltipProvider, TooltipTrigger } from '@/components/ui/tooltip';
-import { Popover, PopoverContent, PopoverTrigger } from '@/components/ui/popover';
+
+
 
 interface ToolbarProps {
   isMuted: boolean;
   isCameraOff: boolean;
   isScreenSharing: boolean;
-  showChat: boolean;
+  showChat?: boolean;
   showStats: boolean;
   showWatchParty: boolean;
-  unreadCount: number;
-  isHandRaised: boolean;
+  unreadCount?: number;
   onToggleMute: () => void;
   onToggleCamera: () => void;
   onToggleScreenShare: () => void;
-  onToggleChat: () => void;
+  onToggleChat?: () => void;
   onToggleStats: () => void;
   onToggleWatchParty: () => void;
-  onToggleHand: () => void;
-  onSendReaction: (emoji: string) => void;
   onLeaveCall: () => void;
 }
 
@@ -39,64 +34,17 @@ export const Toolbar: React.FC<ToolbarProps> = ({
   isMuted,
   isCameraOff,
   isScreenSharing,
-  showChat,
-  showStats: _showStats,
   showWatchParty,
-  unreadCount,
-  isHandRaised,
   onToggleMute,
   onToggleCamera,
   onToggleScreenShare,
-  onToggleChat,
-  onToggleStats,
   onToggleWatchParty,
-  onToggleHand,
-  onSendReaction,
-  onLeaveCall,
+  onLeaveCall
 }) => {
-
-  // Global key listeners inside call
-  useEffect(() => {
-    const handleKeyDown = (e: KeyboardEvent) => {
-      const activeTag = document.activeElement?.tagName.toLowerCase();
-      // Ignore key events if user is typing in chat input
-      if (activeTag === 'input' || activeTag === 'textarea') return;
-
-      switch (e.key.toLowerCase()) {
-        case 'm':
-          e.preventDefault();
-          onToggleMute();
-          break;
-        case 'v':
-          e.preventDefault();
-          onToggleCamera();
-          break;
-        case 's':
-          e.preventDefault();
-          onToggleScreenShare();
-          break;
-        case 'c':
-          e.preventDefault();
-          onToggleChat();
-          break;
-        case 'd':
-          e.preventDefault();
-          onToggleStats();
-          break;
-        default:
-          break;
-      }
-    };
-
-    window.addEventListener('keydown', handleKeyDown);
-    return () => {
-      window.removeEventListener('keydown', handleKeyDown);
-    };
-  }, [onToggleMute, onToggleCamera, onToggleScreenShare, onToggleChat, onToggleStats]);
 
   return (
     <TooltipProvider delayDuration={200}>
-      <div className="flex items-center gap-1.5 sm:gap-2 bg-zinc-900/40 backdrop-blur-2xl px-2 py-1.5 sm:px-4 sm:py-2 border border-white/10 rounded-full shadow-[0_8px_32px_rgba(0,0,0,0.5)] relative z-10 hover:bg-zinc-900/50 transition-colors">
+      <div className="flex items-center gap-1 sm:gap-2 bg-zinc-900/60 backdrop-blur-3xl p-2 sm:p-2 border border-white/10 rounded-[2rem] sm:rounded-full shadow-[0_8px_32px_rgba(0,0,0,0.6)] relative z-10 hover:bg-zinc-900/70 transition-colors w-full max-w-full overflow-x-auto snap-x snap-mandatory [&::-webkit-scrollbar]:hidden [-ms-overflow-style:none] [scrollbar-width:none]">
         
         {/* Toggle Audio */}
         <Tooltip>
@@ -105,14 +53,14 @@ export const Toolbar: React.FC<ToolbarProps> = ({
               type="button"
               variant={isMuted ? 'destructive' : 'outline'}
               size="icon-sm"
-              className="size-8 sm:size-9 rounded-full transition-all border-white/5 hover:bg-white/10 shadow-sm"
+              className="shrink-0 snap-center size-[2.25rem] sm:size-[2.75rem] rounded-full transition-all border-white/5 hover:bg-white/10 shadow-sm"
               onClick={onToggleMute}
             >
               {isMuted ? <MicOff className="size-3.5 sm:size-4" /> : <Mic className="size-3.5 sm:size-4" />}
             </Button>
           </TooltipTrigger>
-          <TooltipContent className="bg-zinc-900 border border-zinc-800 text-[10px] text-zinc-200">
-            {isMuted ? 'Unmute Audio (M)' : 'Mute Audio (M)'}
+          <TooltipContent side="top" className="bg-zinc-950 text-white border-white/10 text-xs hidden sm:block">
+            <p>{isMuted ? 'Unmute' : 'Mute'}</p>
           </TooltipContent>
         </Tooltip>
 
@@ -123,37 +71,36 @@ export const Toolbar: React.FC<ToolbarProps> = ({
               type="button"
               variant={isCameraOff ? 'destructive' : 'outline'}
               size="icon-sm"
-              className="size-8 sm:size-9 rounded-full transition-all border-white/5 hover:bg-white/10 shadow-sm"
+              className="shrink-0 snap-center size-[2.25rem] sm:size-[2.75rem] rounded-full transition-all border-white/5 hover:bg-white/10 shadow-sm"
               onClick={onToggleCamera}
             >
               {isCameraOff ? <VideoOff className="size-3.5 sm:size-4" /> : <Video className="size-3.5 sm:size-4" />}
             </Button>
           </TooltipTrigger>
-          <TooltipContent className="bg-zinc-900 border border-zinc-800 text-[10px] text-zinc-200">
-            {isCameraOff ? 'Enable Camera (V)' : 'Disable Camera (V)'}
+          <TooltipContent side="top" className="bg-zinc-950 text-white border-white/10 text-xs hidden sm:block">
+            <p>{isCameraOff ? 'Turn on camera' : 'Turn off camera'}</p>
           </TooltipContent>
         </Tooltip>
 
-        {/* Toggle Screen Share */}
+        {/* Screen Share */}
         <Tooltip>
           <TooltipTrigger asChild>
             <Button
               type="button"
               variant={isScreenSharing ? 'secondary' : 'outline'}
               size="icon-sm"
-              className={`size-8 sm:size-9 rounded-full transition-all border-white/5 shadow-sm ${isScreenSharing ? 'text-brand-cyan bg-brand-cyan/20 border-brand-cyan/30' : 'hover:bg-white/10'}`}
+              className={`shrink-0 snap-center size-[2.25rem] sm:size-[2.75rem] rounded-full transition-all border-white/5 shadow-sm ${isScreenSharing ? 'text-brand-cyan bg-brand-cyan/20 border-brand-cyan/30' : 'hover:bg-white/10'}`}
               onClick={onToggleScreenShare}
             >
               <Monitor className="size-3.5 sm:size-4" />
             </Button>
           </TooltipTrigger>
-          <TooltipContent className="bg-zinc-900 border border-zinc-800 text-[10px] text-zinc-200">
-            {isScreenSharing ? 'Stop Screen Share (S)' : 'Share Screen (S)'}
+          <TooltipContent side="top" className="bg-zinc-950 text-white border-white/10 text-xs hidden sm:block">
+            <p>{isScreenSharing ? 'Stop sharing' : 'Share screen'}</p>
           </TooltipContent>
         </Tooltip>
 
-        <div className="h-5 sm:h-6 w-px bg-white/10 mx-0.5 sm:mx-1" />
-
+        <div className="shrink-0 snap-center h-6 sm:h-7 w-px bg-white/10 mx-1" />
 
         {/* Toggle Watch Party */}
         <Tooltip>
@@ -162,88 +109,18 @@ export const Toolbar: React.FC<ToolbarProps> = ({
               type="button"
               variant={showWatchParty ? 'secondary' : 'outline'}
               size="icon-sm"
-              className={`size-8 sm:size-9 rounded-full transition-all border-white/5 shadow-sm ${showWatchParty ? 'text-brand-orange bg-brand-orange/20 border-brand-orange/30' : 'hover:bg-white/10'}`}
+              className={`shrink-0 snap-center size-[2.25rem] sm:size-[2.75rem] rounded-full transition-all border-white/5 shadow-sm ${showWatchParty ? 'text-brand-orange bg-brand-orange/20 border-brand-orange/30' : 'hover:bg-white/10'}`}
               onClick={onToggleWatchParty}
             >
               <Popcorn className="size-3.5 sm:size-4" />
             </Button>
           </TooltipTrigger>
-          <TooltipContent className="bg-zinc-900 border border-zinc-800 text-[10px] text-zinc-200">
-            {showWatchParty ? 'Hide Watch Party' : 'Watch Party'}
+          <TooltipContent side="top" className="bg-zinc-950 text-white border-white/10 text-xs hidden sm:block">
+            <p>{showWatchParty ? 'Close Watch Party' : 'Open Watch Party'}</p>
           </TooltipContent>
         </Tooltip>
 
-        {/* Toggle Chat Panel */}
-        <Tooltip>
-          <TooltipTrigger asChild>
-            <Button
-              type="button"
-              variant={showChat ? 'secondary' : 'outline'}
-              size="icon-sm"
-              className={`size-8 sm:size-9 rounded-full transition-all border-white/5 shadow-sm relative ${showChat ? 'text-brand-violet bg-brand-violet/20 border-brand-violet/30' : 'hover:bg-white/10'}`}
-              onClick={onToggleChat}
-            >
-              <MessageSquare className="size-3.5 sm:size-4" />
-              {unreadCount > 0 && (
-                <span className="absolute -top-1 -right-1 size-3.5 sm:size-4 bg-brand-violet text-white text-[8px] font-bold flex items-center justify-center rounded-full animate-pulse border border-zinc-950">
-                  {unreadCount}
-                </span>
-              )}
-            </Button>
-          </TooltipTrigger>
-          <TooltipContent className="bg-zinc-900 border border-zinc-800 text-[10px] text-zinc-200">
-            {showChat ? 'Hide Chat Sidebar (C)' : 'Show Chat Sidebar (C)'}
-          </TooltipContent>
-        </Tooltip>
-
-        <div className="h-5 sm:h-6 w-px bg-white/10 mx-0.5 sm:mx-1" />
-
-        {/* Raise Hand */}
-        <Tooltip>
-          <TooltipTrigger asChild>
-            <Button
-              type="button"
-              variant={isHandRaised ? 'secondary' : 'outline'}
-              size="icon-sm"
-              className={`size-8 sm:size-9 rounded-full transition-all border-white/5 shadow-sm ${isHandRaised ? 'text-amber-400 bg-amber-400/20 border-amber-400/30' : 'hover:bg-white/10'}`}
-              onClick={onToggleHand}
-            >
-              <Hand className="size-3.5 sm:size-4" />
-            </Button>
-          </TooltipTrigger>
-          <TooltipContent className="bg-zinc-900 border border-zinc-800 text-[10px] text-zinc-200">
-            {isHandRaised ? 'Lower Hand' : 'Raise Hand'}
-          </TooltipContent>
-        </Tooltip>
-
-        {/* Reactions */}
-        <Popover>
-          <PopoverTrigger asChild>
-            <Button
-              type="button"
-              variant="outline"
-              size="icon-sm"
-              className="size-8 sm:size-9 rounded-full transition-all border-white/5 shadow-sm hover:text-brand-emerald hover:border-brand-emerald/40 hover:bg-white/10"
-            >
-              <SmilePlus className="size-3.5 sm:size-4" />
-            </Button>
-          </PopoverTrigger>
-          <PopoverContent side="top" align="center" className="w-auto p-2 bg-zinc-900/60 backdrop-blur-2xl border-white/10 rounded-full flex gap-1 shadow-2xl mb-2">
-            {['👍', '👎', '❤️', '😂', '🎉', '😮'].map((emoji) => (
-              <Button
-                key={emoji}
-                variant="ghost"
-                size="icon-sm"
-                className="size-8 text-lg hover:bg-zinc-800 hover:scale-110 transition-transform rounded-full"
-                onClick={() => onSendReaction(emoji)}
-              >
-                {emoji}
-              </Button>
-            ))}
-          </PopoverContent>
-        </Popover>
-
-        <div className="h-5 sm:h-6 w-px bg-white/10 mx-0.5 sm:mx-1" />
+        <div className="shrink-0 snap-center h-6 sm:h-7 w-px bg-white/10 mx-1" />
 
         {/* End Call / Leave */}
         <Tooltip>
@@ -252,14 +129,14 @@ export const Toolbar: React.FC<ToolbarProps> = ({
               type="button"
               variant="destructive"
               size="icon-sm"
-              className="size-8 sm:size-9 bg-brand-rose hover:bg-brand-rose/90 rounded-full transition-all shadow-md"
+              className="shrink-0 snap-center size-[2.25rem] sm:size-[2.75rem] bg-brand-rose hover:bg-brand-rose/90 rounded-full transition-all shadow-md"
               onClick={onLeaveCall}
             >
               <PhoneOff className="size-3.5 sm:size-4 text-white" />
             </Button>
           </TooltipTrigger>
-          <TooltipContent className="bg-zinc-900 border border-zinc-800 text-[10px] text-zinc-200">
-            Leave Room
+          <TooltipContent side="top" className="bg-zinc-950 text-white border-brand-rose/50 text-xs hidden sm:block">
+            <p className="font-semibold">Leave Call</p>
           </TooltipContent>
         </Tooltip>
 

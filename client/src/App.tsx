@@ -1,60 +1,62 @@
-import { useState } from 'react';
-import { PreCallLobby } from './components/PreCallLobby';
-import { CallRoom } from './components/CallRoom';
+import { useState, useEffect } from 'react';
+import { AuthScreen } from './components/AuthScreen';
+import { ChatLayout } from './components/ChatLayout';
 
 function App() {
-  const [step, setStep] = useState<'lobby' | 'call'>('lobby');
-    const [roomId, setRoomId] = useState(() => {
-    const params = new URLSearchParams(window.location.search);
-    return params.get('room')?.toLowerCase() || '';
-  });
-  const [userName, setUserName] = useState('');
-  const [userId] = useState(() => {
-    // Generate persistent UUID for session
-    const cached = sessionStorage.getItem('v_call_user_id');
-    if (cached) return cached;
-    const newId = crypto.randomUUID ? crypto.randomUUID() : Math.random().toString(36).substring(2, 15);
-    sessionStorage.setItem('v_call_user_id', newId);
-    return newId;
-  });
+  const [isAuthenticated, setIsAuthenticated] = useState<boolean>(false);
+  const [token, setToken] = useState<string | null>(localStorage.getItem('v_call_token'));
+  const [currentUser, setCurrentUser] = useState<any>(null);
   
-  // Selected device memory
-  const [audioDeviceId, setAudioDeviceId] = useState('');
-  const [videoDeviceId, setVideoDeviceId] = useState('');
+  useEffect(() => {
+    if (token) {
+      const userStr = localStorage.getItem('v_call_user');
+      if (userStr && userStr !== 'undefined') {
+        try {
+          const u = JSON.parse(userStr);
+          if (u) {
+            setCurrentUser(u);
+            setIsAuthenticated(true);
+          } else {
+            throw new Error('User is empty');
+          }
+        } catch (e) {
+          console.error('Failed to parse user from localStorage', e);
+          localStorage.removeItem('v_call_user');
+          localStorage.removeItem('v_call_token');
+          setIsAuthenticated(false);
+          setToken(null);
+        }
+      } else {
+        localStorage.removeItem('v_call_user');
+        localStorage.removeItem('v_call_token');
+        setIsAuthenticated(false);
+        setToken(null);
+      }
+    }
+  }, [token]);
 
-  const handleJoinCall = (joinedRoom: string, name: string, audioId: string, videoId: string) => {
-    setRoomId(joinedRoom);
-    setUserName(name);
-    setAudioDeviceId(audioId);
-    setVideoDeviceId(videoId);
-    
-    // Update URL to match room ID so they can easily share link
-    const newUrl = `${window.location.origin}${window.location.pathname}?room=${joinedRoom}`;
-    window.history.pushState({ path: newUrl }, '', newUrl);
-    
-    setStep('call');
+  const handleLogin = (newToken: string, user: any) => {
+    localStorage.setItem('v_call_token', newToken);
+    localStorage.setItem('v_call_user', JSON.stringify(user));
+    setToken(newToken);
+    setCurrentUser(user);
+    setIsAuthenticated(true);
   };
 
-  const handleLeaveCall = () => {
-    setStep('lobby');
-    // Clear the room query parameter from the URL when leaving
-    const cleanUrl = `${window.location.origin}${window.location.pathname}`;
-    window.history.pushState({ path: cleanUrl }, '', cleanUrl);
+  const handleLogout = () => {
+    localStorage.removeItem('v_call_token');
+    localStorage.removeItem('v_call_user');
+    setToken(null);
+    setCurrentUser(null);
+    setIsAuthenticated(false);
   };
 
   return (
-    <div className="min-h-screen bg-zinc-950 flex flex-col items-center justify-center">
-      {step === 'lobby' ? (
-        <PreCallLobby onJoin={handleJoinCall} defaultRoom={roomId} />
+    <div className="min-h-screen bg-black">
+      {!isAuthenticated ? (
+        <AuthScreen onLogin={handleLogin} />
       ) : (
-        <CallRoom
-          roomId={roomId}
-          userName={userName}
-          userId={userId}
-          initialAudioId={audioDeviceId}
-          initialVideoId={videoDeviceId}
-          onLeave={handleLeaveCall}
-        />
+        <ChatLayout currentUser={currentUser} token={token!} onLogout={handleLogout} />
       )}
     </div>
   );

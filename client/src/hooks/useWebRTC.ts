@@ -1,12 +1,13 @@
 import { useEffect, useRef, useState, useCallback } from 'react';
 import { io, Socket } from 'socket.io-client';
-import { AIParticipant } from '../lib/AIParticipant';
+import { AIParticipant, PERSONAS, type AIPersona } from '../lib/AIParticipant';
 import { toast } from 'sonner';
 
-const SIGNALING_SERVER = import.meta.env.VITE_SIGNALING_SERVER || 'http://localhost:5001';
+const SIGNALING_SERVER = import.meta.env.VITE_SIGNALING_SERVER || "http://localhost:5002";
 
 const ICE_SERVERS: RTCConfiguration = {
   iceServers: [
+    { urls: 'stun:107.175.91.211:3478' }, // Custom STUN server
     { urls: 'stun:stun.l.google.com:19302' },
     { urls: 'stun:stun1.l.google.com:19302' },
     { urls: 'stun:stun2.l.google.com:19302' },
@@ -116,7 +117,7 @@ export interface CallStats {
   connectionState: RTCIceConnectionState | 'disconnected';
 }
 
-export const useWebRTC = (roomId: string, userName: string, userId: string) => {
+export const useWebRTC = (roomId: string, userName: string, userId: string, activeCall?: any, socketProp?: any) => {
   const [localStream, setLocalStream] = useState<MediaStream | null>(null);
   const [peers, setPeers] = useState<Record<string, PeerState>>({});
   const [isMuted, setIsMuted] = useState(false);
@@ -135,6 +136,7 @@ export const useWebRTC = (roomId: string, userName: string, userId: string) => {
   const peersRef = useRef<Record<string, PeerState>>({});
   const localStreamRef = useRef<MediaStream | null>(null);
   const statsIntervalRef = useRef<number | null>(null);
+  const iceServersRef = useRef<RTCConfiguration>(ICE_SERVERS);
   
   // Track Virtual AI Peers hosted by this client
   const hostedVirtualPeersRef = useRef<Record<string, {
@@ -211,7 +213,7 @@ export const useWebRTC = (roomId: string, userName: string, userId: string) => {
     };
   };
 
-  const sendChatMessage = useCallback((text: string) => {
+  const sendChatMessage = useCallback(async (text: string) => {
     if (!text.trim()) return;
     const msgId = Math.random().toString(36).substr(2, 9);
     const messagePayload = { type: 'chat', id: msgId, text };
@@ -223,6 +225,55 @@ export const useWebRTC = (roomId: string, userName: string, userId: string) => {
         peer.dataChannel.send(JSON.stringify(messagePayload));
       }
     });
+
+    const aiPeers = Object.values(hostedVirtualPeersRef.current);
+    const aiInCall = aiPeers.length > 0;
+
+    if (aiInCall) {
+      aiPeers.forEach((vp) => {
+        if (vp.aiInstance && vp.aiInstance.getState() === 'connected') {
+          vp.aiInstance.sendSystemContext(`[CHAT MESSAGE from ${userName}]: ${text}. Please reply naturally with your voice if appropriate.`);
+        }
+      });
+    } else {
+      // AI not in call, fetch text reply
+      try {
+        const res = await fetch(`http://localhost:5002/api/ai/chat`, {
+          method: 'POST',
+          headers: { 'Content-Type': 'application/json' },
+          body: JSON.stringify({ message: text, userName })
+        });
+        const data = await res.json();
+        
+        if (data.error) {
+          throw new Error(typeof data.error === 'string' ? data.error : data.error.message || 'API Error');
+        }
+
+        if (data.reply) {
+          const aiMsgId = Math.random().toString(36).substr(2, 9);
+          const aiPayload = { type: 'chat', id: aiMsgId, text: data.reply, senderName: 'Lily (AI)' };
+          
+          setChatMessages((prev) => [...prev, { id: aiMsgId, sender: 'remote', senderName: 'Lily (AI)', text: data.reply, timestamp: new Date() }]);
+          
+          Object.values(peersRef.current).forEach((peer) => {
+            if (peer.dataChannel && peer.dataChannel.readyState === 'open') {
+              peer.dataChannel.send(JSON.stringify(aiPayload));
+            }
+          });
+        }
+      } catch (err: any) {
+        console.error('Failed to get AI text reply:', err);
+        const errMsg = err.message || 'Unknown error';
+        const isRateLimit = errMsg.toLowerCase().includes('quota') || errMsg.toLowerCase().includes('rate');
+        
+        const aiMsgId = Math.random().toString(36).substr(2, 9);
+        setChatMessages((prev) => [...prev, { 
+          id: aiMsgId, sender: 'remote', senderName: 'System', 
+          text: isRateLimit ? "Lily is currently busy (API Rate Limit). Please wait a minute before texting her again." : `Failed to reach AI: ${errMsg}`, 
+          timestamp: new Date() 
+        }]);
+      }
+    }
   }, [userName]);
 
   const broadcastVideoState = useCallback((state: VideoSyncState) => {
@@ -237,13 +288,16 @@ export const useWebRTC = (roomId: string, userName: string, userId: string) => {
 
   const createPeerConnection = useCallback((targetInfo: PeerInfo): RTCPeerConnection => {
     const { socketId: targetSocketId, userName: targetUserName } = targetInfo;
-    const pc = new RTCPeerConnection(ICE_SERVERS);
+    const pc = new RTCPeerConnection(iceServersRef.current);
     
     peersRef.current[targetSocketId] = { info: targetInfo, pc, stream: null, dataChannel: null };
     syncPeersState();
 
     pc.onconnectionstatechange = () => {
-      if (pc.connectionState === 'failed') handleIceRestart(targetSocketId);
+      if (pc.connectionState === 'failed' || pc.connectionState === 'disconnected') handleIceRestart(targetSocketId);
+    };
+    pc.oniceconnectionstatechange = () => {
+      if (pc.iceConnectionState === 'failed' || pc.iceConnectionState === 'disconnected') handleIceRestart(targetSocketId);
     };
 
     pc.ontrack = (event) => {
@@ -284,6 +338,8 @@ export const useWebRTC = (roomId: string, userName: string, userId: string) => {
 
   const initiateCall = useCallback(async (targetInfo: PeerInfo) => {
     try {
+      if (peersRef.current[targetInfo.socketId]) return;
+
       const pc = createPeerConnection(targetInfo);
       const dataChannel = pc.createDataChannel('chat-channel');
       setupDataChannel(dataChannel, targetInfo.socketId, targetInfo.userName);
@@ -495,13 +551,13 @@ export const useWebRTC = (roomId: string, userName: string, userId: string) => {
   }, [roomId]);
 
   // AI Summoning Logic
-  const summonAI = useCallback(async () => {
-    if (!socketRef.current || !roomId) return;
-    const virtualId = `ai-${socketRef.current.id}`;
+  const summonAI = useCallback(async (persona: AIPersona = 'lily') => {
+    if (!roomId) return;
     
-    if (hostedVirtualPeersRef.current[virtualId]) return; // Already summoned
-
-    const ai = new AIParticipant();
+    // Create virtual ID for AI
+    const virtualId = `ai_${Math.random().toString(36).substr(2, 9)}`;
+    const ai = new AIParticipant(persona);
+    const personaConfig = PERSONAS[persona];
     
     ai.addEventListener('statechange', ((e: CustomEvent) => {
       if (peersRef.current[virtualId]) {
@@ -510,26 +566,69 @@ export const useWebRTC = (roomId: string, userName: string, userId: string) => {
       }
     }) as EventListener);
 
-    await ai.connect('ws://localhost:5001/ai-proxy');
+    await ai.connect("ws://localhost:5002/ai-proxy");
     
     if (localStreamRef.current) ai.addStream(localStreamRef.current);
+    
+    // Feed existing remote peers and OTHER existing AIs to the new AI
     Object.values(peersRef.current).forEach(peer => {
       if (peer.stream) ai.addStream(peer.stream);
     });
 
-    const info: PeerInfo = { socketId: virtualId, userId: virtualId, userName: "Virak" };
+    // CRITICAL: Feed this NEW AI's stream to ALL OTHER locally hosted AIs so they can hear each other!
+    Object.values(hostedVirtualPeersRef.current).forEach(existingAi => {
+      existingAi.aiInstance.addStream(ai.aiStream);
+    });
+
+    const info: PeerInfo = { socketId: virtualId, userId: virtualId, userName: personaConfig.name };
     hostedVirtualPeersRef.current[virtualId] = { info, stream: ai.aiStream, aiInstance: ai, pcs: {} };
     
     // Add visually to local peers list
     peersRef.current[virtualId] = { info, stream: ai.aiStream, pc: null as any, dataChannel: null, aiState: ai.getState() };
     syncPeersState();
 
-    socketRef.current.emit('add-virtual-user', { roomId, virtualId, userName: "Virak" });
+    socketRef.current?.emit('add-virtual-user', { roomId, virtualId, userName: personaConfig.name });
     
     // We do NOT initiate calls for the virtual user directly here because `user-joined` will prompt others to call us!
   }, [roomId, syncPeersState]);
 
+  const removeAI = useCallback((virtualId: string) => {
+    if (!roomId || !socketRef.current) return;
+    
+    const hostedPeer = hostedVirtualPeersRef.current[virtualId];
+    if (hostedPeer && hostedPeer.aiInstance) {
+      hostedPeer.aiInstance.disconnect?.();
+    }
+    
+    delete hostedVirtualPeersRef.current[virtualId];
+    
+    const peer = peersRef.current[virtualId];
+    if (peer) {
+      if (peer.pc) peer.pc.close();
+      if (peer.dataChannel) peer.dataChannel.close();
+      delete peersRef.current[virtualId];
+    }
+    
+    socketRef.current.emit('remove-virtual-user', { roomId, virtualId });
+    syncPeersState();
+    toast.success("AI left the call");
+  }, [roomId, syncPeersState]);
+
   useEffect(() => {
+    // Fetch dynamic TURN credentials
+    fetch(`${SIGNALING_SERVER}/api/calls/turn-credentials`)
+      .then(res => res.json())
+      .then(data => {
+        if (data.iceServers && Array.isArray(data.iceServers)) {
+          iceServersRef.current = {
+            iceServers: [...(ICE_SERVERS.iceServers || []), ...data.iceServers],
+            bundlePolicy: 'max-bundle',
+            rtcpMuxPolicy: 'require'
+          };
+        }
+      })
+      .catch(err => console.error("Failed to fetch dynamic TURN credentials", err));
+
     return () => {
       if (localStreamRef.current) localStreamRef.current.getTracks().forEach((track) => track.stop());
     };
@@ -543,6 +642,21 @@ export const useWebRTC = (roomId: string, userName: string, userId: string) => {
 
     socket.on('connect', () => {
       socket.emit('join-room', { roomId, userId, userName });
+
+      if (activeCall && activeCall.role === 'caller' && activeCall.partnerId) {
+        setTimeout(() => {
+          const partnerId = activeCall.partnerId;
+          const isAlreadyPeer = Object.keys(peersRef.current).includes(partnerId) || 
+                                Object.values(peersRef.current).some(p => p.info.userId === partnerId);
+          if (!isAlreadyPeer) {
+            initiateCall({
+              socketId: partnerId,
+              userId: partnerId,
+              userName: activeCall.partnerName || 'Remote User'
+            });
+          }
+        }, 1000);
+      }
     });
 
     socket.on('all-users', (users: PeerInfo[]) => {
@@ -562,7 +676,7 @@ export const useWebRTC = (roomId: string, userName: string, userId: string) => {
         let pc = vp.pcs[senderSocketId];
         if (signalData.type === 'sdp-offer') {
           if (!pc) {
-            pc = new RTCPeerConnection(ICE_SERVERS);
+            pc = new RTCPeerConnection(iceServersRef.current);
             vp.pcs[senderSocketId] = pc;
             vp.stream.getTracks().forEach(track => pc.addTrack(track, vp.stream));
             pc.onicecandidate = (event) => {
@@ -644,9 +758,20 @@ export const useWebRTC = (roomId: string, userName: string, userId: string) => {
     };
   }, [roomId, isMediaReady, userId, userName, createPeerConnection, initiateCall, cleanUpPC, startDiagnostics, syncPeersState]);
 
+  // Feed Watch Party context to AI
+  useEffect(() => {
+    if (!videoSyncState.url) return;
+    Object.values(hostedVirtualPeersRef.current).forEach(vp => {
+      if (vp.aiInstance && vp.aiInstance.getState() === 'connected') {
+        const timeStr = Math.floor(videoSyncState.playedSeconds / 60) + ':' + Math.floor(videoSyncState.playedSeconds % 60).toString().padStart(2, '0');
+        vp.aiInstance.sendSystemContext(`The group is currently having a Watch Party. We are watching the video at URL: ${videoSyncState.url}. The video is currently ${videoSyncState.playing ? 'playing' : 'paused'} at timestamp ${timeStr}.`);
+      }
+    });
+  }, [videoSyncState.url, videoSyncState.playing, Math.floor(videoSyncState.playedSeconds / 10)]);
+
   return {
     localStream, peers, isMuted, isCameraOff, isScreenSharing, chatMessages, stats, videoSyncState,
     isHandRaised, sendChatMessage, broadcastVideoState, toggleMute, toggleCamera, toggleScreenShare, toggleHand, sendReaction, leaveCall, initLocalMedia,
-    summonAI
+    summonAI, removeAI
   };
 };

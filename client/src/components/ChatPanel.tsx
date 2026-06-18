@@ -36,23 +36,29 @@ export const ChatPanel: React.FC<ChatPanelProps & { onClose?: () => void }> = ({
   };
 
   return (
-    <div className="flex flex-col h-full bg-zinc-950/60 backdrop-blur-3xl border-l border-white/5 w-full sm:w-80 text-zinc-300">
+    <div className="flex flex-col h-full bg-zinc-950/60 backdrop-blur-3xl border-l border-white/5 w-full text-zinc-300">
       
       {/* Sidebar Tabs */}
       <div className="flex border-b border-white/5 relative pr-10">
         <button
           onClick={() => setActiveTab('chat')}
-          className={`flex-1 py-3 text-xs font-semibold flex items-center justify-center gap-1.5 border-b-2 transition-all ${activeTab === 'chat' ? 'border-brand-violet text-white bg-zinc-900/40' : 'border-transparent text-zinc-400 hover:text-zinc-200'}`}
+          className={`flex-1 py-3 text-xs font-semibold flex items-center justify-center gap-1.5 transition-all outline-none relative ${activeTab === 'chat' ? 'text-white' : 'text-zinc-400 hover:text-zinc-200'}`}
         >
           <MessageSquare className="size-3.5" />
           Chat
+          {activeTab === 'chat' && (
+            <span className="absolute bottom-0 inset-x-0 mx-8 h-[2px] bg-brand-violet rounded-t-full shadow-[0_0_12px_rgba(139,92,246,0.6)]" />
+          )}
         </button>
         <button
           onClick={() => setActiveTab('users')}
-          className={`flex-1 py-3 text-xs font-semibold flex items-center justify-center gap-1.5 border-b-2 transition-all ${activeTab === 'users' ? 'border-brand-violet text-white bg-zinc-900/40' : 'border-transparent text-zinc-400 hover:text-zinc-200'}`}
+          className={`flex-1 py-3 text-xs font-semibold flex items-center justify-center gap-1.5 transition-all outline-none relative ${activeTab === 'users' ? 'text-white' : 'text-zinc-400 hover:text-zinc-200'}`}
         >
           <Users className="size-3.5" />
           Participants ({peers.length + 1})
+          {activeTab === 'users' && (
+            <span className="absolute bottom-0 inset-x-0 mx-8 h-[2px] bg-brand-violet rounded-t-full shadow-[0_0_12px_rgba(139,92,246,0.6)]" />
+          )}
         </button>
         
         {/* Mobile Close Button */}
@@ -109,8 +115,8 @@ export const ChatPanel: React.FC<ChatPanelProps & { onClose?: () => void }> = ({
                 onChange={(e) => setInputText(e.target.value)}
                 className="pr-10 h-10 bg-zinc-900/50 border-white/5 text-sm focus-visible:ring-brand-violet/50"
               />
-              <Button type="submit" size="icon-sm" className="bg-brand-violet hover:bg-brand-violet/90 size-8 text-white">
-                <Send className="size-3.5" />
+              <Button type="submit" size="icon" className="bg-brand-violet hover:bg-brand-violet/90 size-10 shrink-0 text-white rounded-md">
+                <Send className="size-4 -ml-0.5" />
               </Button>
             </form>
             </div>
