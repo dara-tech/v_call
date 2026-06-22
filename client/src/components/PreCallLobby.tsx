@@ -192,10 +192,10 @@ export const PreCallLobby: React.FC<PreCallLobbyProps> = ({ onJoin, defaultRoom,
   };
 
   return (
-    <div className="flex flex-col items-center justify-center min-h-[100dvh] sm:min-h-[100vh] sm:px-4 bg-[#0a0a0a] text-zinc-100 relative overflow-hidden">
+    <div className="flex flex-col items-center justify-center min-h-[100dvh] sm:min-h-[100vh] sm:px-4 sm:py-8 bg-[#0a0a0a] text-zinc-100 relative overflow-y-auto overflow-x-hidden">
       
       {/* Container */}
-      <div className="w-full h-[100dvh] sm:h-auto max-w-4xl bg-[#111] border border-zinc-800/50 sm:rounded-3xl overflow-hidden shadow-2xl grid grid-cols-1 md:grid-cols-12 relative z-10">
+      <div className="w-full min-h-[100dvh] sm:min-h-0 sm:h-auto max-w-4xl bg-[#111] border border-zinc-800/50 sm:rounded-3xl overflow-hidden shadow-2xl grid grid-cols-1 md:grid-cols-12 relative z-10">
         
         {/* Left Side: Video Preview Panel (7 Columns) */}
         <div className="md:col-span-7 p-4 sm:p-6 border-b border-zinc-800/50 md:border-b-0 md:border-r md:border-zinc-800 flex flex-col justify-between">
