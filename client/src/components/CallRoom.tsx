@@ -7,7 +7,7 @@ import { DeviceSelect } from './DeviceSelect';
 import { WatchPartyPlayer } from './WatchPartyPlayer';
 import { Dialog, DialogContent, DialogHeader, DialogTitle } from '@/components/ui/dialog';
 import { Button } from '@/components/ui/button';
-import { MicOff, VideoOff, Users, Bot, Hand,  X } from 'lucide-react';
+import { MicOff, VideoOff, Users, Bot, Hand, X, Copy, Check } from 'lucide-react';
 import confetti from 'canvas-confetti';
 import { Toaster } from 'sonner';
 
@@ -157,6 +157,28 @@ export const CallRoom: React.FC<CallRoomProps> = ({
   const localVideoRef = useRef<HTMLVideoElement>(null);
 
   // Initialize media devices once in call room
+  const [isCopied, setIsCopied] = useState(false);
+  const handleCopyInvite = async () => {
+    try {
+      if (navigator.clipboard && window.isSecureContext) {
+        await navigator.clipboard.writeText(roomId);
+      } else {
+        const textArea = document.createElement("textarea");
+        textArea.value = roomId;
+        textArea.style.position = "fixed";
+        document.body.appendChild(textArea);
+        textArea.focus();
+        textArea.select();
+        document.execCommand('copy');
+        textArea.remove();
+      }
+      setIsCopied(true);
+      setTimeout(() => setIsCopied(false), 2000);
+    } catch (err) {
+      console.error('Copy failed', err);
+    }
+  };
+
   useEffect(() => {
     initLocalMedia(activeAudioId, activeVideoId);
   }, [initLocalMedia, activeAudioId, activeVideoId]);
@@ -286,6 +308,17 @@ export const CallRoom: React.FC<CallRoomProps> = ({
               </div>
             </div>
           )}
+
+          {/* Top Left Invite Button */}
+          <div className="absolute top-4 left-4 z-40 pointer-events-auto">
+            <button 
+              onClick={handleCopyInvite}
+              className="flex items-center gap-1.5 bg-black/60 backdrop-blur-xl border border-white/10 px-3 py-1.5 rounded-full shadow-2xl transition-all hover:bg-white/10 text-white text-xs font-semibold group"
+            >
+              {isCopied ? <Check className="size-3.5 text-brand-emerald" /> : <Copy className="size-3.5 text-zinc-400 group-hover:text-white" />}
+              <span>{isCopied ? 'Copied!' : `Room: ${roomId}`}</span>
+            </button>
+          </div>
 
           {/* Top Center AI Controls */}
           <div className="absolute top-4 left-1/2 -translate-x-1/2 z-40 flex items-center gap-1 bg-black/60 backdrop-blur-xl border border-white/10 p-1.5 rounded-full shadow-2xl pointer-events-auto transition-all">
