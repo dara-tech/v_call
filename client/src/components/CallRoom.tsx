@@ -309,17 +309,6 @@ export const CallRoom: React.FC<CallRoomProps> = ({
             </div>
           )}
 
-          {/* Top Left Invite Button */}
-          <div className="absolute top-4 left-4 z-40 pointer-events-auto">
-            <button 
-              onClick={handleCopyInvite}
-              className="flex items-center gap-1.5 bg-black/60 backdrop-blur-xl border border-white/10 px-3 py-1.5 rounded-full shadow-2xl transition-all hover:bg-white/10 text-white text-xs font-semibold group"
-            >
-              {isCopied ? <Check className="size-3.5 text-brand-emerald" /> : <Copy className="size-3.5 text-zinc-400 group-hover:text-white" />}
-              <span>{isCopied ? 'Copied!' : `Room: ${roomId}`}</span>
-            </button>
-          </div>
-
           {/* Top Center AI Controls */}
           <div className="absolute top-4 left-1/2 -translate-x-1/2 z-40 flex items-center gap-1 bg-black/60 backdrop-blur-xl border border-white/10 p-1.5 rounded-full shadow-2xl pointer-events-auto transition-all">
             {!lilyPeerId ? (
@@ -395,6 +384,8 @@ export const CallRoom: React.FC<CallRoomProps> = ({
                 onToggleStats={() => setShowStats(!showStats)}
                 onToggleWatchParty={() => setShowWatchParty(!showWatchParty)}
                 onLeaveCall={handleExitRoom}
+                onCopyInvite={handleCopyInvite}
+                isCopied={isCopied}
               />
             </div>
           )}

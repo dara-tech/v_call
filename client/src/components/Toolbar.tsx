@@ -8,7 +8,9 @@ import {
   VideoOff, 
   Monitor, 
   PhoneOff, 
-  Popcorn
+  Popcorn,
+  Copy,
+  Check
 } from 'lucide-react';
 
 
@@ -28,6 +30,8 @@ interface ToolbarProps {
   onToggleStats: () => void;
   onToggleWatchParty: () => void;
   onLeaveCall: () => void;
+  onCopyInvite?: () => void;
+  isCopied?: boolean;
 }
 
 export const Toolbar: React.FC<ToolbarProps> = ({
@@ -39,7 +43,9 @@ export const Toolbar: React.FC<ToolbarProps> = ({
   onToggleCamera,
   onToggleScreenShare,
   onToggleWatchParty,
-  onLeaveCall
+  onLeaveCall,
+  onCopyInvite,
+  isCopied
 }) => {
 
   return (
@@ -119,6 +125,26 @@ export const Toolbar: React.FC<ToolbarProps> = ({
             <p>{showWatchParty ? 'Close Watch Party' : 'Open Watch Party'}</p>
           </TooltipContent>
         </Tooltip>
+
+        {/* Copy Invite Link */}
+        {onCopyInvite && (
+          <Tooltip>
+            <TooltipTrigger asChild>
+              <Button
+                type="button"
+                variant="outline"
+                size="icon-sm"
+                className={`shrink-0 snap-center size-[2.25rem] sm:size-[2.75rem] rounded-full transition-all border-white/5 shadow-sm ${isCopied ? 'text-brand-emerald bg-brand-emerald/20 border-brand-emerald/30' : 'hover:bg-white/10'}`}
+                onClick={onCopyInvite}
+              >
+                {isCopied ? <Check className="size-3.5 sm:size-4" /> : <Copy className="size-3.5 sm:size-4" />}
+              </Button>
+            </TooltipTrigger>
+            <TooltipContent side="top" className="bg-zinc-950 text-white border-white/10 text-xs hidden sm:block">
+              <p>{isCopied ? 'Copied!' : 'Copy Room ID'}</p>
+            </TooltipContent>
+          </Tooltip>
+        )}
 
         <div className="shrink-0 snap-center h-6 sm:h-7 w-px bg-white/10 mx-1" />
 
