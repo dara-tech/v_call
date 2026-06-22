@@ -58,15 +58,22 @@ export const WatchPartyPlayer: React.FC<WatchPartyPlayerProps> = ({
   const [hoveredId, setHoveredId] = useState<string | null>(null);
   const seekingRef = useRef(false);
   const debounceRef = useRef<ReturnType<typeof setTimeout> | null>(null);
+  const lastPlayedRef = useRef(0);
 
   useEffect(() => {
     setIsPlaying(videoSyncState.playing);
     if (playerRef.current && !seekingRef.current) {
       const cur = typeof playerRef.current.getCurrentTime === 'function'
         ? playerRef.current.getCurrentTime() : 0;
-      if (Math.abs(cur - videoSyncState.playedSeconds) > 2) {
+        
+      const expectedTime = videoSyncState.playing 
+        ? videoSyncState.playedSeconds + (Date.now() - videoSyncState.timestamp) / 1000 
+        : videoSyncState.playedSeconds;
+
+      if (Math.abs(cur - expectedTime) > 2) {
         if (typeof playerRef.current.seekTo === 'function') {
-          playerRef.current.seekTo(videoSyncState.playedSeconds, 'seconds');
+          playerRef.current.seekTo(expectedTime, 'seconds');
+          lastPlayedRef.current = expectedTime;
         }
       }
     }
@@ -383,9 +390,10 @@ export const WatchPartyPlayer: React.FC<WatchPartyPlayerProps> = ({
                 onPlay={handlePlay}
                 onPause={handlePause}
                 onProgress={(state) => {
-                  if (Math.abs(state.playedSeconds - videoSyncState.playedSeconds) > 3) {
+                  if (Math.abs(state.playedSeconds - lastPlayedRef.current) > 2) {
                     handleSeek(state.playedSeconds);
                   }
+                  lastPlayedRef.current = state.playedSeconds;
                 }}
               />
             ) : (
@@ -399,9 +407,10 @@ export const WatchPartyPlayer: React.FC<WatchPartyPlayerProps> = ({
                 onPlay={handlePlay}
                 onPause={handlePause}
                 onProgress={(state: { playedSeconds: number }) => {
-                  if (Math.abs(state.playedSeconds - videoSyncState.playedSeconds) > 3) {
+                  if (Math.abs(state.playedSeconds - lastPlayedRef.current) > 2) {
                     handleSeek(state.playedSeconds);
                   }
+                  lastPlayedRef.current = state.playedSeconds;
                 }}
                 config={{ 
                   youtube: { playerVars: { disablekb: 1 } },
