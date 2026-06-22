@@ -7,7 +7,7 @@ import { DeviceSelect } from './DeviceSelect';
 import { WatchPartyPlayer } from './WatchPartyPlayer';
 import { Dialog, DialogContent, DialogHeader, DialogTitle } from '@/components/ui/dialog';
 import { Button } from '@/components/ui/button';
-import { MicOff, VideoOff, Users, Bot, Hand, X, Copy, Check } from 'lucide-react';
+import { MicOff, VideoOff, Users, Bot, Hand, X} from 'lucide-react';
 import confetti from 'canvas-confetti';
 import { Toaster } from 'sonner';
 
