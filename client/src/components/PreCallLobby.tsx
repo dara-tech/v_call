@@ -2,7 +2,7 @@ import React, { useEffect, useRef, useState } from 'react';
 import { Button } from '@/components/ui/button';
 import { Input } from '@/components/ui/input';
 import { DeviceSelect } from './DeviceSelect';
-import { Mic, MicOff, Video, VideoOff, Settings, Keyboard } from 'lucide-react';
+import { Mic, MicOff, Video, VideoOff, Settings, Keyboard, Dice5 } from 'lucide-react';
 
 interface PreCallLobbyProps {
   onJoin: (room: string, name: string, audioId: string, videoId: string) => void;
@@ -10,8 +10,11 @@ interface PreCallLobbyProps {
   defaultName?: string;
 }
 
+const GENZ_NAMES = ["VibeCheck", "MainCharacter", "Bruh", "Ghosted", "SlayQueen", "CEOofYapping", "NoCap", "BratSummer", "Sigma", "RizzlyBear", "Skibidi", "W_Rizz", "Based", "TouchGrass", "Delulu"];
+const generateName = () => `${GENZ_NAMES[Math.floor(Math.random() * GENZ_NAMES.length)]}_${Math.floor(Math.random() * 999)}`;
+
 export const PreCallLobby: React.FC<PreCallLobbyProps> = ({ onJoin, defaultRoom, defaultName = '' }) => {
-  const [name, setName] = useState(defaultName);
+  const [name, setName] = useState(defaultName || generateName());
   const [room, setRoom] = useState(defaultRoom);
   const [selectedAudio, setSelectedAudio] = useState('');
   const [selectedVideo, setSelectedVideo] = useState('');
@@ -189,9 +192,10 @@ export const PreCallLobby: React.FC<PreCallLobbyProps> = ({ onJoin, defaultRoom,
   };
 
   return (
-    <div className="flex flex-col items-center justify-center min-h-[100dvh] sm:min-h-[90vh] sm:px-4 bg-zinc-950 sm:bg-transparent">
+    <div className="flex flex-col items-center justify-center min-h-[100dvh] sm:min-h-[100vh] sm:px-4 bg-[#0a0a0a] text-zinc-100 relative overflow-hidden">
+      
       {/* Container */}
-      <div className="w-full h-[100dvh] sm:h-auto max-w-4xl bg-zinc-950 sm:bg-zinc-900/60 sm:border border-zinc-800 sm:rounded-xl overflow-hidden sm:shadow-2xl sm:backdrop-blur-md grid grid-cols-1 md:grid-cols-12">
+      <div className="w-full h-[100dvh] sm:h-auto max-w-4xl bg-[#111] border border-zinc-800/50 sm:rounded-3xl overflow-hidden shadow-2xl grid grid-cols-1 md:grid-cols-12 relative z-10">
         
         {/* Left Side: Video Preview Panel (7 Columns) */}
         <div className="md:col-span-7 p-4 sm:p-6 border-b border-zinc-800/50 md:border-b-0 md:border-r md:border-zinc-800 flex flex-col justify-between">
@@ -210,7 +214,7 @@ export const PreCallLobby: React.FC<PreCallLobbyProps> = ({ onJoin, defaultRoom,
             </div>
 
             {/* Video Preview Frame */}
-            <div className="relative aspect-video rounded-lg overflow-hidden bg-black sm:bg-zinc-950 border border-zinc-800/50 sm:border-zinc-800 flex items-center justify-center">
+            <div className="relative aspect-video rounded-2xl overflow-hidden bg-black border border-zinc-800/80 flex items-center justify-center">
               {isVideoEnabled ? (
                 <video
                   ref={videoRef}
@@ -241,10 +245,10 @@ export const PreCallLobby: React.FC<PreCallLobbyProps> = ({ onJoin, defaultRoom,
                 </span>
                 <span className="font-mono">{isAudioEnabled ? 'Testing' : 'Muted'}</span>
               </div>
-              <div className="h-1 bg-zinc-900 sm:bg-zinc-950 rounded overflow-hidden">
+              <div className="h-1 bg-zinc-900 rounded-full overflow-hidden">
                 <div
                   ref={audioMeterRef}
-                  className="h-full bg-brand-cyan transition-all duration-75"
+                  className="h-full bg-zinc-200 transition-all duration-75"
                   style={{ width: '0%' }}
                 />
               </div>
@@ -258,30 +262,32 @@ export const PreCallLobby: React.FC<PreCallLobbyProps> = ({ onJoin, defaultRoom,
               variant={isAudioEnabled ? 'outline' : 'destructive'}
               size="sm"
               onClick={toggleAudio}
-              className="flex-1 sm:flex-none sm:w-28 gap-1.5 h-9 sm:h-8 text-xs sm:text-sm bg-zinc-900/50 sm:bg-transparent"
+              className={`flex-1 sm:flex-none sm:w-28 gap-1.5 h-10 sm:h-9 text-xs sm:text-sm rounded-xl transition-all ${isAudioEnabled ? 'bg-zinc-900 border-zinc-800 hover:bg-zinc-800 text-zinc-300' : 'bg-red-500/10 text-red-500 border-red-500/20 hover:bg-red-500/20'}`}
             >
               {isAudioEnabled ? <Mic className="size-3.5" /> : <MicOff className="size-3.5" />}
-              {isAudioEnabled ? 'Audio On' : 'Muted'}
+              {isAudioEnabled ? 'Audio' : 'Muted'}
             </Button>
             <Button
               type="button"
               variant={isVideoEnabled ? 'outline' : 'destructive'}
               size="sm"
               onClick={toggleVideo}
-              className="flex-1 sm:flex-none sm:w-32 gap-1.5 h-9 sm:h-8 text-xs sm:text-sm bg-zinc-900/50 sm:bg-transparent"
+              className={`flex-1 sm:flex-none sm:w-32 gap-1.5 h-10 sm:h-9 text-xs sm:text-sm rounded-xl transition-all ${isVideoEnabled ? 'bg-zinc-900 border-zinc-800 hover:bg-zinc-800 text-zinc-300' : 'bg-red-500/10 text-red-500 border-red-500/20 hover:bg-red-500/20'}`}
             >
               {isVideoEnabled ? <Video className="size-3.5" /> : <VideoOff className="size-3.5" />}
-              {isVideoEnabled ? 'Camera On' : 'Camera Off'}
+              {isVideoEnabled ? 'Camera' : 'Off'}
             </Button>
           </div>
         </div>
 
         {/* Right Side: Join Form Panel (5 Columns) */}
         <div className="md:col-span-5 p-4 sm:p-6 flex flex-col justify-between flex-1">
-          <div className="space-y-5 sm:space-y-6">
-            <div className="space-y-0.5 sm:space-y-1">
-              <h1 className="text-lg sm:text-xl font-bold tracking-tight text-white">V-Call</h1>
-              <p className="text-[11px] sm:text-xs text-zinc-400">Join a secure P2P media room built with WebRTC</p>
+          <div className="space-y-6 sm:space-y-8">
+            <div className="hidden sm:block space-y-1 sm:space-y-2">
+              <h1 className="text-2xl sm:text-3xl font-bold tracking-tight text-white flex items-center gap-2">
+                V-Call
+              </h1>
+              <p className="text-xs sm:text-sm text-zinc-500 font-medium">minimal, fast, peer-to-peer.</p>
             </div>
 
             {showSettings ? (
@@ -310,26 +316,37 @@ export const PreCallLobby: React.FC<PreCallLobbyProps> = ({ onJoin, defaultRoom,
               // Form view
               <form onSubmit={handleJoinCall} className="space-y-4">
                 {/* Username Input */}
-                <div className="space-y-1.5">
-                  <label htmlFor="nickname" className="text-[11px] sm:text-xs font-semibold text-zinc-400">
+                <div className="space-y-2">
+                  <label htmlFor="nickname" className="text-[10px] font-bold uppercase tracking-widest text-zinc-500">
                     Your Name
                   </label>
-                  <Input
-                    id="nickname"
-                    type="text"
-                    required
-                    placeholder="Enter your nickname"
-                    value={name}
-                    onChange={(e) => setName(e.target.value)}
-                    className="bg-zinc-900 sm:bg-zinc-950 border-zinc-800 focus:border-zinc-700 text-zinc-200 h-10 sm:h-9 text-sm sm:text-xs"
-                    maxLength={20}
-                  />
+                  <div className="flex gap-2">
+                    <Input
+                      id="nickname"
+                      type="text"
+                      required
+                      placeholder="Enter your name"
+                      value={name}
+                      onChange={(e) => setName(e.target.value)}
+                      className="bg-[#0a0a0a] border-zinc-800/80 focus:border-zinc-600 focus:ring-0 text-white h-12 rounded-xl text-sm"
+                      maxLength={20}
+                    />
+                    <Button 
+                      type="button" 
+                      variant="outline" 
+                      className="size-12 shrink-0 rounded-xl bg-[#0a0a0a] border-zinc-800/80 hover:bg-zinc-900 transition-all text-zinc-400 hover:text-white"
+                      onClick={() => setName(generateName())}
+                      title="Re-roll Name"
+                    >
+                      <Dice5 className="size-5" />
+                    </Button>
+                  </div>
                 </div>
 
                 {/* Room ID Input */}
-                <div className="space-y-1.5">
+                <div className="space-y-2">
                   <div className="flex justify-between items-center">
-                    <label htmlFor="room-id" className="text-[11px] sm:text-xs font-semibold text-zinc-400">
+                    <label htmlFor="room-id" className="text-[10px] font-bold uppercase tracking-widest text-zinc-500">
                       Room Code
                     </label>
                     <Button
@@ -337,9 +354,9 @@ export const PreCallLobby: React.FC<PreCallLobbyProps> = ({ onJoin, defaultRoom,
                       variant="link"
                       size="xs"
                       onClick={generateRoom}
-                      className="text-brand-cyan hover:underline text-[10px] p-0"
+                      className="text-zinc-400 hover:text-white text-[10px] p-0 font-medium uppercase tracking-widest"
                     >
-                      Generate Code
+                      Randomize
                     </Button>
                   </div>
                   <Input
@@ -349,7 +366,7 @@ export const PreCallLobby: React.FC<PreCallLobbyProps> = ({ onJoin, defaultRoom,
                     placeholder="e.g. abc-def-ghi"
                     value={room}
                     onChange={(e) => setRoom(e.target.value)}
-                    className="bg-zinc-900 sm:bg-zinc-950 border-zinc-800 focus:border-zinc-700 text-zinc-200 h-10 sm:h-9 text-sm sm:text-xs font-mono"
+                    className="bg-[#0a0a0a] border-zinc-800/80 focus:border-zinc-600 focus:ring-0 text-white h-12 rounded-xl text-sm font-mono tracking-wider"
                   />
                 </div>
 
@@ -357,9 +374,9 @@ export const PreCallLobby: React.FC<PreCallLobbyProps> = ({ onJoin, defaultRoom,
                 <Button
                   type="submit"
                   disabled={!name.trim() || !room.trim()}
-                  className="w-full bg-white hover:bg-zinc-200 text-black font-semibold h-11 sm:h-9 mt-4 sm:mt-6 text-sm sm:text-xs transition-colors rounded-lg sm:rounded-md"
+                  className="w-full bg-white hover:bg-zinc-200 text-black font-semibold h-12 mt-6 text-sm transition-all rounded-xl border-0"
                 >
-                  Enter Room
+                  Join Room
                 </Button>
               </form>
             )}

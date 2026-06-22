@@ -117,7 +117,7 @@ export interface CallStats {
   connectionState: RTCIceConnectionState | 'disconnected';
 }
 
-export const useWebRTC = (roomId: string, userName: string, userId: string, activeCall?: any, socketProp?: any) => {
+export const useWebRTC = (roomId: string, userName: string, userId: string, activeCall?: any) => {
   const [localStream, setLocalStream] = useState<MediaStream | null>(null);
   const [peers, setPeers] = useState<Record<string, PeerState>>({});
   const [isMuted, setIsMuted] = useState(false);

@@ -1,64 +1,42 @@
-import { useState, useEffect } from 'react';
-import { AuthScreen } from './components/AuthScreen';
-import { ChatLayout } from './components/ChatLayout';
+import { useState } from 'react';
+import { PreCallLobby } from './components/PreCallLobby';
+import { CallRoom } from './components/CallRoom';
 
 function App() {
-  const [isAuthenticated, setIsAuthenticated] = useState<boolean>(false);
-  const [token, setToken] = useState<string | null>(localStorage.getItem('v_call_token'));
-  const [currentUser, setCurrentUser] = useState<any>(null);
-  
-  useEffect(() => {
-    if (token) {
-      const userStr = localStorage.getItem('v_call_user');
-      if (userStr && userStr !== 'undefined') {
-        try {
-          const u = JSON.parse(userStr);
-          if (u) {
-            setCurrentUser(u);
-            setIsAuthenticated(true);
-          } else {
-            throw new Error('User is empty');
-          }
-        } catch (e) {
-          console.error('Failed to parse user from localStorage', e);
-          localStorage.removeItem('v_call_user');
-          localStorage.removeItem('v_call_token');
-          setIsAuthenticated(false);
-          setToken(null);
-        }
-      } else {
-        localStorage.removeItem('v_call_user');
-        localStorage.removeItem('v_call_token');
-        setIsAuthenticated(false);
-        setToken(null);
-      }
-    }
-  }, [token]);
+  const [callParams, setCallParams] = useState<{
+    room: string;
+    name: string;
+    audioId: string;
+    videoId: string;
+  } | null>(null);
 
-  const handleLogin = (newToken: string, user: any) => {
-    localStorage.setItem('v_call_token', newToken);
-    localStorage.setItem('v_call_user', JSON.stringify(user));
-    setToken(newToken);
-    setCurrentUser(user);
-    setIsAuthenticated(true);
+  const handleJoin = (room: string, name: string, audioId: string, videoId: string) => {
+    setCallParams({ room, name, audioId, videoId });
   };
 
-  const handleLogout = () => {
-    localStorage.removeItem('v_call_token');
-    localStorage.removeItem('v_call_user');
-    setToken(null);
-    setCurrentUser(null);
-    setIsAuthenticated(false);
+  const handleLeave = () => {
+    setCallParams(null);
   };
+
+  if (callParams) {
+    return (
+      <CallRoom 
+        roomId={callParams.room}
+        userName={callParams.name}
+        userId={`user_${Math.random().toString(36).substr(2, 9)}`}
+        initialAudioId={callParams.audioId}
+        initialVideoId={callParams.videoId}
+        activeCall={null}
+        onLeave={handleLeave}
+      />
+    );
+  }
 
   return (
-    <div className="min-h-screen bg-black">
-      {!isAuthenticated ? (
-        <AuthScreen onLogin={handleLogin} />
-      ) : (
-        <ChatLayout currentUser={currentUser} token={token!} onLogout={handleLogout} />
-      )}
-    </div>
+    <PreCallLobby 
+      onJoin={handleJoin} 
+      defaultRoom="lobby" 
+    />
   );
 }
 

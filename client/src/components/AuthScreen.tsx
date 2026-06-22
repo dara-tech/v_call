@@ -19,6 +19,16 @@ export function AuthScreen({ onLogin }: AuthScreenProps) {
   const [password, setPassword] = useState('');
   const [displayName, setDisplayName] = useState('');
 
+  const handleAnonymousJoin = () => {
+    const dummyUser = {
+      _id: `anon_${Math.random().toString(36).substr(2, 9)}`,
+      fullname: `Guest_${Math.floor(Math.random() * 1000)}`,
+      email: 'guest@anonymous.local',
+      isAnonymous: true
+    };
+    onLogin('dummy_token_anon', dummyUser);
+  };
+
   const handleSubmit = async (e: React.FormEvent) => {
     e.preventDefault();
     setLoading(true);
@@ -122,13 +132,23 @@ export function AuthScreen({ onLogin }: AuthScreenProps) {
           </Button>
         </form>
 
-        <button 
-          type="button"
-          onClick={() => setIsLogin(!isLogin)}
-          className="mt-6 text-[15px] text-[#3390ec] font-medium hover:underline"
-        >
-          {isLogin ? "CREATE ACCOUNT" : "LOG IN"}
-        </button>
+        <div className="flex flex-col items-center gap-3 mt-6">
+          <button 
+            type="button"
+            onClick={() => setIsLogin(!isLogin)}
+            className="text-[15px] text-[#3390ec] font-medium hover:underline"
+          >
+            {isLogin ? "CREATE ACCOUNT" : "LOG IN"}
+          </button>
+
+          <button 
+            type="button"
+            onClick={handleAnonymousJoin}
+            className="text-[14px] text-[#aaaaaa] font-medium hover:text-white transition-colors"
+          >
+            JOIN ANONYMOUSLY
+          </button>
+        </div>
 
       </div>
     </div>

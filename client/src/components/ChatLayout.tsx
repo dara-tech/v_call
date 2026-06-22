@@ -882,7 +882,6 @@ export const ChatLayout: React.FC<ChatLayoutProps> = ({ currentUser, token, onLo
                     userName={currentUser.fullname || currentUser.displayName} 
                     userId={currentUser.id || currentUser._id}
                     activeCall={activeCall}
-                    socket={socket}
                     initialAudioId=""
                     initialVideoId=""
                     onLeave={handleLeaveCall}

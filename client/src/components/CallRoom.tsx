@@ -18,7 +18,6 @@ interface CallRoomProps {
   initialAudioId: string;
   initialVideoId: string;
   activeCall: any;
-  socket: any;
   onLeave: () => void;
   onWatchPartyChange?: (isActive: boolean) => void;
 }
@@ -115,7 +114,6 @@ export const CallRoom: React.FC<CallRoomProps> = ({
   initialAudioId,
   initialVideoId,
   activeCall,
-  socket,
   onLeave,
   onWatchPartyChange,
 }) => {
@@ -138,7 +136,7 @@ export const CallRoom: React.FC<CallRoomProps> = ({
     initLocalMedia,
     summonAI,
     removeAI,
-  } = useWebRTC(roomId, userName, userId, activeCall, socket);
+  } = useWebRTC(roomId, userName, userId, activeCall);
 
   // UI state toggles
   const [showWatchParty, setShowWatchParty] = useState(false);
@@ -238,11 +236,11 @@ export const CallRoom: React.FC<CallRoomProps> = ({
   }, [peerList.length]);
 
   return (
-    <div className="flex flex-col h-full w-full overflow-hidden bg-black font-sans text-zinc-300 relative z-20">
+    <div className="flex flex-col flex-1 h-[100dvh] w-full overflow-hidden bg-[#0a0a0a] font-sans text-zinc-300 relative z-20">
       <Toaster theme="dark" position="top-right" />
 
       {/* Main Container */}
-      <div className={`flex-1 flex overflow-hidden ${showWatchParty ? 'flex-col sm:flex-row' : ''}`}>
+      <div className={`w-full h-full flex overflow-hidden ${showWatchParty ? 'flex-col sm:flex-row' : ''}`}>
         
         {/* Watch Party Main Presentation Area */}
         {showWatchParty && (
@@ -256,10 +254,10 @@ export const CallRoom: React.FC<CallRoomProps> = ({
         )}
 
         {/* Video Area (Grid or Sidebar) */}
-        <div className={`relative bg-zinc-950 flex flex-col transition-all duration-300 ${
+        <div className={`relative bg-[#0a0a0a] flex flex-col transition-all duration-300 ${
           showWatchParty
             ? 'w-full h-40 sm:h-full sm:w-72 border-t sm:border-t-0 sm:border-l border-zinc-900 shrink-0 p-2 overflow-y-auto overflow-x-auto sm:overflow-x-hidden'
-            : 'flex-1 p-0 sm:p-4 overflow-y-auto'
+            : 'w-full h-full p-0 sm:p-4 overflow-y-auto'
         }`}>
           
           {hasPeers ? (
@@ -342,10 +340,11 @@ export const CallRoom: React.FC<CallRoomProps> = ({
               </div>
             )}
 
-            <div className="absolute bottom-2 left-2 bg-black/40 backdrop-blur-xl border border-white/10 px-2 py-1 rounded-full text-[9px] text-white font-semibold flex items-center gap-1 shadow-md">
-              You ({userName})
-              {isHandRaised && <Hand className="size-2 text-amber-400 animate-bounce" />}
-            </div>
+            {isHandRaised && (
+              <div className="absolute bottom-2 left-2 bg-black/40 backdrop-blur-xl border border-white/10 p-1.5 rounded-full shadow-md flex items-center justify-center">
+                <Hand className="size-3 text-amber-400 animate-bounce" />
+              </div>
+            )}
           </div>
 
           {/* Bottom Floating Control Bar (Normal Mode) */}
