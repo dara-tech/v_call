@@ -35,6 +35,9 @@ export class AIParticipant extends EventTarget {
   // Audio playback state
   private nextPlayTime: number = 0;
   private readonly JITTER_BUFFER_MS = 150;
+  private activeSources: AudioBufferSourceNode[] = [];
+  private isPlayingAudio: boolean = false;
+  private lastVideoFrameTime: Map<string, number> = new Map();
   
   // Reconnection and Session state
   private proxyUrl: string = "ws://localhost:5002/ai-proxy";
@@ -46,8 +49,10 @@ export class AIParticipant extends EventTarget {
   private currentState: AIState = 'disconnected';
 
   // Voice Activity Detection (VAD)
-  private readonly VAD_THRESHOLD = 0.001; // Lowered RMS threshold for much higher sensitivity
-  private readonly SILENCE_CHUNKS_BEFORE_PAUSE = 10; // ~1.7 seconds of silence before cutting off
+  // RMS Threshold: Lower is MORE sensitive. 0.005 catches normal speech without cutting off too easily.
+  private readonly VAD_THRESHOLD = 0.005; 
+  // 1 chunk = ~0.17s (4096 samples @ 24kHz). 20 chunks = ~3.4 seconds of trailing silence.
+  private readonly SILENCE_CHUNKS_BEFORE_PAUSE = 20; 
   private silenceCount = 0;
   private isSendingAudio = false;
   
@@ -88,6 +93,9 @@ export class AIParticipant extends EventTarget {
       if (rms > this.VAD_THRESHOLD) {
         this.silenceCount = 0;
         this.isSendingAudio = true;
+        if (this.isPlayingAudio) {
+          this.interrupt();
+        }
       } else {
         this.silenceCount++;
         if (this.silenceCount > this.SILENCE_CHUNKS_BEFORE_PAUSE) {
@@ -149,8 +157,45 @@ export class AIParticipant extends EventTarget {
       
       const personaConfig = PERSONAS[this.personaId];
       
-     const setupPayload: any = {
+      const setupPayload: any = {
   model: 'models/gemini-3.1-flash-live-preview',
+  tools: [{
+    functionDeclarations: [
+      {
+        name: 'changeTheme',
+        description: 'Changes the app theme to light or dark. Use this when the user asks to change the theme or colors.',
+        parameters: {
+          type: 'OBJECT',
+          properties: {
+            theme: { type: 'STRING', enum: ['light', 'dark'] }
+          },
+          required: ['theme']
+        }
+      },
+      {
+        name: 'raiseHand',
+        description: 'Toggles your raised hand in the call. Use this when the user asks you to raise your hand or you want to ask a question.',
+        parameters: {
+          type: 'OBJECT',
+          properties: {
+            raised: { type: 'BOOLEAN' }
+          },
+          required: ['raised']
+        }
+      },
+      {
+        name: 'react',
+        description: 'Sends an emoji reaction to the room. Use this when someone says something funny, sad, or exciting.',
+        parameters: {
+          type: 'OBJECT',
+          properties: {
+            emoji: { type: 'STRING', description: 'A single emoji character (e.g. 👍, ❤️, 😂)' }
+          },
+          required: ['emoji']
+        }
+      }
+    ]
+  }],
   systemInstruction: {
     parts: [{
       text: personaConfig.prompt
@@ -209,6 +254,9 @@ export class AIParticipant extends EventTarget {
           for (const part of parts) {
             if (part.inlineData && part.inlineData.data) {
               this.playAudio(part.inlineData.data);
+            }
+            if (part.functionCall) {
+              this.dispatchEvent(new CustomEvent('functioncall', { detail: part.functionCall }));
             }
           }
         }
@@ -282,6 +330,13 @@ export class AIParticipant extends EventTarget {
       
       if (videoEl.readyState < 2) return; // Ensure enough data is loaded
       
+      const now = Date.now();
+      const lastTime = this.lastVideoFrameTime.get(stream.id) || 0;
+      const intervalLimit = this.isSendingAudio ? 500 : 3000; // 2 FPS if speaking, 0.33 FPS if silent
+      
+      if (now - lastTime < intervalLimit) return;
+      this.lastVideoFrameTime.set(stream.id, now);
+      
       try {
         this.ctx.drawImage(videoEl, 0, 0, this.canvas.width, this.canvas.height);
         const dataUrl = this.canvas.toDataURL('image/jpeg', 0.5); // Compress to 50%
@@ -299,7 +354,7 @@ export class AIParticipant extends EventTarget {
       } catch (err) {
         console.error('[AIParticipant] Failed to capture video frame:', err);
       }
-    }, 1000); // Send 1 Frame Per Second
+    }, 200); // Check 5 times a second, but actual send rate depends on intervalLimit
     
     this.videoIntervals.set(stream.id, intervalId);
   }
@@ -367,6 +422,26 @@ export class AIParticipant extends EventTarget {
     }
   }
 
+  public interrupt() {
+    if (!this.isPlayingAudio) return;
+    
+    console.log('[AIParticipant] Interrupting AI audio playback');
+    this.isPlayingAudio = false;
+    
+    this.activeSources.forEach(source => {
+      try { source.stop(); } catch(e) {}
+    });
+    this.activeSources = [];
+    this.nextPlayTime = this.audioContext.currentTime;
+    
+    if (this.ws && this.ws.readyState === WebSocket.OPEN) {
+      // Sending turnComplete: true clears the server's generation queue.
+      this.ws.send(JSON.stringify({
+        clientContent: { turnComplete: true }
+      }));
+    }
+  }
+
   private playAudio(base64Data: string) {
     const binaryStr = window.atob(base64Data);
     const len = Math.floor(binaryStr.length / 2) * 2;
@@ -396,6 +471,17 @@ export class AIParticipant extends EventTarget {
     }
     
     source.start(this.nextPlayTime);
+    
+    this.activeSources.push(source);
+    this.isPlayingAudio = true;
+    
+    source.onended = () => {
+      this.activeSources = this.activeSources.filter(s => s !== source);
+      if (this.activeSources.length === 0) {
+        this.isPlayingAudio = false;
+      }
+    };
+    
     this.nextPlayTime += audioBuffer.duration;
   }
 

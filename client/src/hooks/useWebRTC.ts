@@ -566,6 +566,42 @@ export const useWebRTC = (roomId: string, userName: string, userId: string, acti
       }
     }) as EventListener);
 
+    ai.addEventListener('functioncall', ((e: CustomEvent) => {
+      const call = e.detail;
+      console.log('[useWebRTC] AI Function Call:', call);
+      
+      if (call.name === 'react') {
+        const args = call.args as any;
+        if (args && args.emoji) {
+          if (socketRef.current && roomId) {
+            socketRef.current.emit('reaction', { roomId, socketId: virtualId, emoji: args.emoji });
+            window.dispatchEvent(new CustomEvent('reaction-received', { detail: { socketId: virtualId, emoji: args.emoji } }));
+            toast(`${personaConfig.name} reacted`, { icon: args.emoji, duration: 2500 });
+          }
+        }
+      } else if (call.name === 'raiseHand') {
+        const args = call.args as any;
+        if (args && typeof args.raised === 'boolean') {
+          if (socketRef.current && roomId) {
+            socketRef.current.emit('toggle-hand', { roomId, socketId: virtualId, handRaised: args.raised });
+            toast(`${personaConfig.name} ${args.raised ? 'raised' : 'lowered'} their hand`);
+          }
+        }
+      } else if (call.name === 'changeTheme') {
+        const args = call.args as any;
+        if (args && args.theme) {
+          if (args.theme === 'dark') {
+            document.documentElement.classList.add('dark');
+            localStorage.setItem('theme', 'dark');
+          } else {
+            document.documentElement.classList.remove('dark');
+            localStorage.setItem('theme', 'light');
+          }
+          toast(`${personaConfig.name} changed the theme to ${args.theme}`);
+        }
+      }
+    }) as EventListener);
+
     await ai.connect("ws://localhost:5002/ai-proxy");
     
     if (localStreamRef.current) ai.addStream(localStreamRef.current);
