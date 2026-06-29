@@ -54,6 +54,7 @@ export class AIParticipant extends EventTarget {
   // 1 chunk = ~0.17s (4096 samples @ 24kHz). 20 chunks = ~3.4 seconds of trailing silence.
   private readonly SILENCE_CHUNKS_BEFORE_PAUSE = 20; 
   private silenceCount = 0;
+  private speechCount = 0;
   private isSendingAudio = false;
   
   public personaId: AIPersona;
@@ -92,11 +93,16 @@ export class AIParticipant extends EventTarget {
       
       if (rms > this.VAD_THRESHOLD) {
         this.silenceCount = 0;
+        this.speechCount++;
         this.isSendingAudio = true;
-        if (this.isPlayingAudio) {
+        
+        // Only interrupt if the user has been speaking for at least 3 chunks (~0.5 seconds)
+        // This prevents echo or brief noises from instantly cutting the AI off.
+        if (this.isPlayingAudio && this.speechCount > 3) {
           this.interrupt();
         }
       } else {
+        this.speechCount = 0;
         this.silenceCount++;
         if (this.silenceCount > this.SILENCE_CHUNKS_BEFORE_PAUSE) {
           this.isSendingAudio = false;
@@ -465,8 +471,10 @@ export class AIParticipant extends EventTarget {
     source.connect(this.audioContext.destination); // Play directly to local hardware speakers
     
     const currentTime = this.audioContext.currentTime;
-    // Jitter Buffer logic: if nextPlayTime is behind the current time + jitter, reset it.
-    if (this.nextPlayTime < currentTime + (this.JITTER_BUFFER_MS / 1000)) {
+    
+    // Jitter Buffer logic: Only reset nextPlayTime if we've fallen behind (underrun).
+    // If we underrun, add a small delay (jitter buffer) to allow future chunks to arrive.
+    if (this.nextPlayTime < currentTime) {
       this.nextPlayTime = currentTime + (this.JITTER_BUFFER_MS / 1000);
     }
     
