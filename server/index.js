@@ -5,6 +5,7 @@ import cors from 'cors';
 import dotenv from 'dotenv';
 import ytSearch from 'yt-search';
 import { setupAIProxy } from './ai-proxy.js';
+import puppeteer from 'puppeteer';
 
 dotenv.config();
 
@@ -75,6 +76,10 @@ const io = new Server(server, {
 // Basic room tracking
 const rooms = new Map(); // roomId -> Set of socketIds
 
+// Puppeteer State
+let browser = null;
+const browserPages = new Map(); // socketId -> { page, interval }
+
 io.on('connection', (socket) => {
   console.log(`[Signaling] Socket connected: ${socket.id}`);
 
@@ -133,6 +138,70 @@ io.on('connection', (socket) => {
     io.in(roomId).emit('virtual-user-removed', { virtualId });
   });
 
+  // --- AI BROWSER COMMANDS ---
+  socket.on('start-ai-browser', async ({ url }) => {
+    try {
+      if (!browser) {
+        browser = await puppeteer.launch({ headless: 'new', args: ['--no-sandbox'] });
+      }
+      if (browserPages.has(socket.id)) {
+        const existing = browserPages.get(socket.id);
+        clearInterval(existing.interval);
+        await existing.page.close().catch(()=> {});
+      }
+
+      const page = await browser.newPage();
+      await page.setViewport({ width: 1280, height: 720 });
+      await page.goto(url, { waitUntil: 'networkidle2' }).catch(e => console.log('[AI Browser] Goto error:', e));
+
+      const interval = setInterval(async () => {
+        try {
+          if (page.isClosed()) {
+            clearInterval(interval);
+            return;
+          }
+          const screenshot = await page.screenshot({ type: 'jpeg', quality: 50, encoding: 'base64' });
+          socket.emit('ai-browser-frame', { base64Data: screenshot });
+        } catch (err) {
+          // ignore screenshot errors while navigating
+        }
+      }, 1000); // 1 FPS for headless AI browsing
+
+      browserPages.set(socket.id, { page, interval });
+      console.log(`[AI Browser] Started for ${socket.id} at ${url}`);
+    } catch (error) {
+      console.error('[AI Browser] Error starting:', error);
+    }
+  });
+
+  socket.on('ai-browser-click', async ({ x, y }) => {
+    const session = browserPages.get(socket.id);
+    if (session && session.page) {
+      try {
+        await session.page.mouse.click(x, y);
+      } catch (e) {}
+    }
+  });
+
+  socket.on('ai-browser-scroll', async ({ delta }) => {
+    const session = browserPages.get(socket.id);
+    if (session && session.page) {
+      try {
+        await session.page.mouse.wheel({ deltaY: delta });
+      } catch (e) {}
+    }
+  });
+
+  socket.on('stop-ai-browser', async () => {
+    const session = browserPages.get(socket.id);
+    if (session) {
+      clearInterval(session.interval);
+      await session.page.close().catch(()=>{});
+      browserPages.delete(socket.id);
+      console.log(`[AI Browser] Stopped for ${socket.id}`);
+    }
+  });
+
   socket.on('disconnect', () => {
     console.log(`[Signaling] Socket disconnected: ${socket.id}`);
     if (socket.roomId) {
@@ -143,6 +212,14 @@ io.on('connection', (socket) => {
         }
       }
       socket.to(socket.roomId).emit('user-left', { socketId: socket.id });
+    }
+    
+    // Cleanup AI browser session
+    const session = browserPages.get(socket.id);
+    if (session) {
+      clearInterval(session.interval);
+      session.page.close().catch(()=>{});
+      browserPages.delete(socket.id);
     }
   });
 });

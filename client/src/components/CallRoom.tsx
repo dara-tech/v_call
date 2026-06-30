@@ -152,6 +152,9 @@ export const CallRoom: React.FC<CallRoomProps> = ({
   // Track if AIs are in the room
   const lilyPeerId = Object.entries(peers).find(([_, p]) => p.info.userName === 'Lily')?.[0];
   const daraPeerId = Object.entries(peers).find(([_, p]) => p.info.userName === 'Dara')?.[0];
+  const monkPeerId = Object.entries(peers).find(([_, p]) => p.info.userName === 'Monk')?.[0];
+  const sisamouthPeerId = Object.entries(peers).find(([_, p]) => p.info.userName === 'Sisamouth')?.[0];
+  const developerPeerId = Object.entries(peers).find(([_, p]) => p.info.userName === 'Developer')?.[0];
 
   // Video element references
   const localVideoRef = useRef<HTMLVideoElement>(null);
@@ -334,6 +337,48 @@ export const CallRoom: React.FC<CallRoomProps> = ({
                  <Bot className="size-3.5 group-hover:hidden" />
                  <X className="size-3.5 hidden group-hover:block" />
                  Dara
+               </button>
+            )}
+
+            <div className="w-px h-4 bg-white/10 mx-1" />
+
+            {!monkPeerId ? (
+               <button className="flex items-center gap-1.5 px-3 py-1.5 rounded-full bg-violet-500/10 hover:bg-violet-500/20 text-violet-400 text-xs font-medium transition-colors" onClick={() => summonAI('monk')}>
+                 <Bot className="size-3.5" /> Monk
+               </button>
+            ) : (
+               <button className="flex items-center gap-1.5 px-3 py-1.5 rounded-full bg-violet-500/20 hover:bg-red-500/20 text-violet-400 hover:text-red-400 text-xs font-medium transition-colors group" onClick={() => removeAI(monkPeerId)}>
+                 <Bot className="size-3.5 group-hover:hidden" />
+                 <X className="size-3.5 hidden group-hover:block" />
+                 Monk
+               </button>
+            )}
+
+            <div className="w-px h-4 bg-white/10 mx-1" />
+
+            {!sisamouthPeerId ? (
+               <button className="flex items-center gap-1.5 px-3 py-1.5 rounded-full bg-orange-500/10 hover:bg-orange-500/20 text-orange-400 text-xs font-medium transition-colors" onClick={() => summonAI('sisamouth')}>
+                 <Bot className="size-3.5" /> Sisamouth
+               </button>
+            ) : (
+               <button className="flex items-center gap-1.5 px-3 py-1.5 rounded-full bg-orange-500/20 hover:bg-red-500/20 text-orange-400 hover:text-red-400 text-xs font-medium transition-colors group" onClick={() => removeAI(sisamouthPeerId)}>
+                 <Bot className="size-3.5 group-hover:hidden" />
+                 <X className="size-3.5 hidden group-hover:block" />
+                 Sisamouth
+               </button>
+            )}
+
+            <div className="w-px h-4 bg-white/10 mx-1" />
+
+            {!developerPeerId ? (
+               <button className="flex items-center gap-1.5 px-3 py-1.5 rounded-full bg-blue-500/10 hover:bg-blue-500/20 text-blue-400 text-xs font-medium transition-colors" onClick={() => summonAI('developer')}>
+                 <Bot className="size-3.5" /> Senior Dev
+               </button>
+            ) : (
+               <button className="flex items-center gap-1.5 px-3 py-1.5 rounded-full bg-blue-500/20 hover:bg-red-500/20 text-blue-400 hover:text-red-400 text-xs font-medium transition-colors group" onClick={() => removeAI(developerPeerId)}>
+                 <Bot className="size-3.5 group-hover:hidden" />
+                 <X className="size-3.5 hidden group-hover:block" />
+                 Senior Dev
                </button>
             )}
           </div>

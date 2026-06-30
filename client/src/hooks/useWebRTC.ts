@@ -1,13 +1,16 @@
 import { useEffect, useRef, useState, useCallback } from 'react';
 import { io, Socket } from 'socket.io-client';
-import { AIParticipant, PERSONAS, type AIPersona } from '../lib/AIParticipant';
+import { AIParticipant, type AIPersona } from '../lib/AIParticipant';
 import { toast } from 'sonner';
+import { useLocalMedia } from './useLocalMedia';
+import { useChatDataChannel } from './useChatDataChannel';
+import { useAIParticipantManager } from './useAIParticipantManager';
 
 const SIGNALING_SERVER = import.meta.env.VITE_SIGNALING_SERVER || "http://localhost:5002";
 
 const ICE_SERVERS: RTCConfiguration = {
   iceServers: [
-    { urls: 'stun:107.175.91.211:3478' }, // Custom STUN server
+    { urls: 'stun:107.175.91.211:3478' },
     { urls: 'stun:stun.l.google.com:19302' },
     { urls: 'stun:stun1.l.google.com:19302' },
     { urls: 'stun:stun2.l.google.com:19302' },
@@ -26,7 +29,7 @@ const ICE_SERVERS: RTCConfiguration = {
   rtcpMuxPolicy: 'require',
 };
 
-function preferOpusHd(sdp: string): string {
+export function preferOpusHd(sdp: string): string {
   const lines = sdp.split('\r\n');
   let opusPayloadType: string | null = null;
   
@@ -60,7 +63,7 @@ function preferOpusHd(sdp: string): string {
   return lines.join('\r\n');
 }
 
-function applyBitrateLimits(pc: RTCPeerConnection, isScreenSharing: boolean = false) {
+export function applyBitrateLimits(pc: RTCPeerConnection, isScreenSharing: boolean = false) {
   setTimeout(() => {
     pc.getSenders().forEach((sender) => {
       if (sender.track && sender.track.kind === 'video') {
@@ -77,57 +80,12 @@ function applyBitrateLimits(pc: RTCPeerConnection, isScreenSharing: boolean = fa
   }, 1000);
 }
 
-export interface PeerInfo {
-  socketId: string;
-  userId: string;
-  userName: string;
-}
-
-export interface PeerState {
-  info: PeerInfo;
-  stream: MediaStream | null;
-  pc: RTCPeerConnection;
-  dataChannel: RTCDataChannel | null;
-  aiState?: string;
-  handRaised?: boolean;
-}
-
-export interface ChatMessage {
-  id: string;
-  sender: 'self' | 'remote';
-  senderName: string;
-  text: string;
-  timestamp: Date;
-}
-
-export interface VideoSyncState {
-  url: string | null;
-  playing: boolean;
-  playedSeconds: number;
-  timestamp: number;
-}
-
-export interface CallStats {
-  latency: number;
-  bitrateIn: number;
-  bitrateOut: number;
-  packetLoss: number;
-  fps: number;
-  resolution: string;
-  connectionState: RTCIceConnectionState | 'disconnected';
-}
+import type { PeerInfo, PeerState, ChatMessage, VideoSyncState, CallStats } from './types';
 
 export const useWebRTC = (roomId: string, userName: string, userId: string, activeCall?: any) => {
-  const [localStream, setLocalStream] = useState<MediaStream | null>(null);
   const [peers, setPeers] = useState<Record<string, PeerState>>({});
-  const [isMuted, setIsMuted] = useState(false);
-  const [isCameraOff, setIsCameraOff] = useState(false);
-  const [isScreenSharing, setIsScreenSharing] = useState(false);
-  const [isMediaReady, setIsMediaReady] = useState(false);
   const [isHandRaised, setIsHandRaised] = useState(false);
   
-  const [chatMessages, setChatMessages] = useState<ChatMessage[]>([]);
-  const [videoSyncState, setVideoSyncState] = useState<VideoSyncState>({ url: null, playing: false, playedSeconds: 0, timestamp: Date.now() });
   const [stats, setStats] = useState<CallStats>({
     latency: 0, bitrateIn: 0, bitrateOut: 0, packetLoss: 0, fps: 0, resolution: '0x0', connectionState: 'new',
   });
@@ -138,12 +96,11 @@ export const useWebRTC = (roomId: string, userName: string, userId: string, acti
   const statsIntervalRef = useRef<number | null>(null);
   const iceServersRef = useRef<RTCConfiguration>(ICE_SERVERS);
   
-  // Track Virtual AI Peers hosted by this client
   const hostedVirtualPeersRef = useRef<Record<string, {
     info: PeerInfo;
     stream: MediaStream;
     aiInstance: AIParticipant;
-    pcs: Record<string, RTCPeerConnection>; // connection from virtual peer to remote peers
+    pcs: Record<string, RTCPeerConnection>;
   }>>({});
   
   const prevBytesReceived = useRef<Record<string, number>>({});
@@ -154,137 +111,20 @@ export const useWebRTC = (roomId: string, userName: string, userId: string, acti
     setPeers({ ...peersRef.current });
   }, []);
 
-  const initLocalMedia = useCallback(async (audioId?: string, videoId?: string) => {
-    try {
-      if (localStreamRef.current) {
-        localStreamRef.current.getTracks().forEach((track) => track.stop());
-      }
+  // Use separated hooks
+  const { 
+    localStream, isMuted, isCameraOff, isScreenSharing, isMediaReady,
+    initLocalMedia, toggleMute, toggleCamera, toggleScreenShare, setLocalStream, setIsMuted, setIsCameraOff, setIsScreenSharing
+  } = useLocalMedia({ localStreamRef, peersRef, hostedVirtualPeersRef });
 
-      const constraints: MediaStreamConstraints = {
-        audio: audioId ? { deviceId: { exact: audioId }, echoCancellation: true, noiseSuppression: true, autoGainControl: true } : { echoCancellation: true, noiseSuppression: true, autoGainControl: true },
-        video: videoId ? { deviceId: { exact: videoId }, width: { ideal: 640 }, height: { ideal: 360 }, frameRate: { ideal: 15, max: 20 } } : { width: { ideal: 640 }, height: { ideal: 360 }, frameRate: { ideal: 15, max: 20 } },
-      };
+  const {
+    chatMessages, setChatMessages, videoSyncState, setVideoSyncState,
+    setupDataChannel, sendChatMessage, broadcastVideoState
+  } = useChatDataChannel({ userName, peersRef, hostedVirtualPeersRef, syncPeersState });
 
-      const stream = await navigator.mediaDevices.getUserMedia(constraints);
-      localStreamRef.current = stream;
-      setLocalStream(stream);
-
-      Object.values(peersRef.current).forEach((peer) => {
-        if (!peer.pc) return;
-        const senders = peer.pc.getSenders();
-        stream.getTracks().forEach((track) => {
-          const sender = senders.find((s) => s.track?.kind === track.kind);
-          if (sender) sender.replaceTrack(track);
-          else peer.pc.addTrack(track, stream);
-        });
-      });
-      
-      // Feed mic to AI if active
-      Object.values(hostedVirtualPeersRef.current).forEach(vp => {
-        vp.aiInstance.addStream(stream);
-      });
-      
-      setIsMediaReady(true);
-      return stream;
-    } catch (error) {
-      console.error('Error accessing media devices:', error);
-      throw error;
-    }
-  }, []);
-
-  const setupDataChannel = (channel: RTCDataChannel, targetSocketId: string, remoteUserName: string) => {
-    if (peersRef.current[targetSocketId]) {
-      peersRef.current[targetSocketId].dataChannel = channel;
-      syncPeersState();
-    }
-
-    channel.onmessage = (event) => {
-      try {
-        const data = JSON.parse(event.data);
-        if (data.type === 'chat') {
-          setChatMessages((prev) => [
-            ...prev,
-            { id: data.id || Math.random().toString(36).substr(2, 9), sender: 'remote', senderName: remoteUserName || 'Remote', text: data.text, timestamp: new Date() },
-          ]);
-        } else if (data.type === 'video-sync') {
-          setVideoSyncState(data.state);
-        }
-      } catch (err) {}
-    };
-  };
-
-  const sendChatMessage = useCallback(async (text: string) => {
-    if (!text.trim()) return;
-    const msgId = Math.random().toString(36).substr(2, 9);
-    const messagePayload = { type: 'chat', id: msgId, text };
-
-    setChatMessages((prev) => [...prev, { id: msgId, sender: 'self', senderName: userName, text, timestamp: new Date() }]);
-
-    Object.values(peersRef.current).forEach((peer) => {
-      if (peer.dataChannel && peer.dataChannel.readyState === 'open') {
-        peer.dataChannel.send(JSON.stringify(messagePayload));
-      }
-    });
-
-    const aiPeers = Object.values(hostedVirtualPeersRef.current);
-    const aiInCall = aiPeers.length > 0;
-
-    if (aiInCall) {
-      aiPeers.forEach((vp) => {
-        if (vp.aiInstance && vp.aiInstance.getState() === 'connected') {
-          vp.aiInstance.sendSystemContext(`[CHAT MESSAGE from ${userName}]: ${text}. Please reply naturally with your voice if appropriate.`);
-        }
-      });
-    } else {
-      // AI not in call, fetch text reply
-      try {
-        const res = await fetch(`http://localhost:5002/api/ai/chat`, {
-          method: 'POST',
-          headers: { 'Content-Type': 'application/json' },
-          body: JSON.stringify({ message: text, userName })
-        });
-        const data = await res.json();
-        
-        if (data.error) {
-          throw new Error(typeof data.error === 'string' ? data.error : data.error.message || 'API Error');
-        }
-
-        if (data.reply) {
-          const aiMsgId = Math.random().toString(36).substr(2, 9);
-          const aiPayload = { type: 'chat', id: aiMsgId, text: data.reply, senderName: 'Lily (AI)' };
-          
-          setChatMessages((prev) => [...prev, { id: aiMsgId, sender: 'remote', senderName: 'Lily (AI)', text: data.reply, timestamp: new Date() }]);
-          
-          Object.values(peersRef.current).forEach((peer) => {
-            if (peer.dataChannel && peer.dataChannel.readyState === 'open') {
-              peer.dataChannel.send(JSON.stringify(aiPayload));
-            }
-          });
-        }
-      } catch (err: any) {
-        console.error('Failed to get AI text reply:', err);
-        const errMsg = err.message || 'Unknown error';
-        const isRateLimit = errMsg.toLowerCase().includes('quota') || errMsg.toLowerCase().includes('rate');
-        
-        const aiMsgId = Math.random().toString(36).substr(2, 9);
-        setChatMessages((prev) => [...prev, { 
-          id: aiMsgId, sender: 'remote', senderName: 'System', 
-          text: isRateLimit ? "Lily is currently busy (API Rate Limit). Please wait a minute before texting her again." : `Failed to reach AI: ${errMsg}`, 
-          timestamp: new Date() 
-        }]);
-      }
-    }
-  }, [userName]);
-
-  const broadcastVideoState = useCallback((state: VideoSyncState) => {
-    setVideoSyncState(state);
-    const messagePayload = { type: 'video-sync', state };
-    Object.values(peersRef.current).forEach((peer) => {
-      if (peer.dataChannel && peer.dataChannel.readyState === 'open') {
-        peer.dataChannel.send(JSON.stringify(messagePayload));
-      }
-    });
-  }, []);
+  const { summonAI, removeAI } = useAIParticipantManager({
+    roomId, socketRef, peersRef, hostedVirtualPeersRef, localStreamRef, syncPeersState, toggleScreenShare
+  });
 
   const createPeerConnection = useCallback((targetInfo: PeerInfo): RTCPeerConnection => {
     const { socketId: targetSocketId, userName: targetUserName } = targetInfo;
@@ -313,7 +153,6 @@ export const useWebRTC = (roomId: string, userName: string, userId: string, acti
         }
         syncPeersState();
         
-        // Feed remote audio to AI if active
         Object.values(hostedVirtualPeersRef.current).forEach(vp => {
           if (peer.stream) vp.aiInstance.addStream(peer.stream);
         });
@@ -334,7 +173,7 @@ export const useWebRTC = (roomId: string, userName: string, userId: string, acti
 
     applyBitrateLimits(pc);
     return pc;
-  }, [syncPeersState]);
+  }, [syncPeersState, setupDataChannel]);
 
   const initiateCall = useCallback(async (targetInfo: PeerInfo) => {
     try {
@@ -350,7 +189,7 @@ export const useWebRTC = (roomId: string, userName: string, userId: string, acti
 
       socketRef.current?.emit('relay-signal', { targetSocketId: targetInfo.socketId, signalData: { type: 'sdp-offer', sdp: hdOffer } });
     } catch (error) {}
-  }, [createPeerConnection]);
+  }, [createPeerConnection, setupDataChannel]);
 
   const handleIceRestart = async (targetSocketId: string) => {
     const peer = peersRef.current[targetSocketId];
@@ -417,7 +256,6 @@ export const useWebRTC = (roomId: string, userName: string, userId: string, acti
       if (peer.dataChannel) peer.dataChannel.close();
     });
     
-    // Clean up virtual peers
     Object.values(hostedVirtualPeersRef.current).forEach(vp => {
       Object.values(vp.pcs).forEach(pc => pc.close());
       vp.aiInstance.disconnect();
@@ -427,7 +265,7 @@ export const useWebRTC = (roomId: string, userName: string, userId: string, acti
     hostedVirtualPeersRef.current = {};
     syncPeersState();
     setChatMessages([]);
-  }, [syncPeersState]);
+  }, [syncPeersState, setChatMessages]);
 
   const leaveCall = useCallback(() => {
     if (localStreamRef.current) {
@@ -443,90 +281,7 @@ export const useWebRTC = (roomId: string, userName: string, userId: string, acti
     setIsMuted(false);
     setIsCameraOff(false);
     setIsScreenSharing(false);
-  }, [cleanUpPC]);
-
-  const toggleMute = useCallback(() => {
-    if (localStreamRef.current) {
-      const audioTrack = localStreamRef.current.getAudioTracks()[0];
-      if (audioTrack) {
-        audioTrack.enabled = !audioTrack.enabled;
-        setIsMuted(!audioTrack.enabled);
-      }
-    }
-  }, []);
-
-  const toggleCamera = useCallback(() => {
-    if (localStreamRef.current) {
-      const videoTrack = localStreamRef.current.getVideoTracks()[0];
-      if (videoTrack) {
-        if (isScreenSharing) toggleScreenShare();
-        else {
-          videoTrack.enabled = !videoTrack.enabled;
-          setIsCameraOff(!videoTrack.enabled);
-        }
-      }
-    }
-  }, [isScreenSharing]);
-
-  const toggleScreenShare = useCallback(async () => {
-    if (!localStreamRef.current) return;
-    try {
-      if (isScreenSharing) {
-        setIsScreenSharing(false);
-        const originalStream = await navigator.mediaDevices.getUserMedia({ video: { width: { ideal: 640 }, height: { ideal: 360 } } });
-        const newVideoTrack = originalStream.getVideoTracks()[0];
-        const oldVideoTrack = localStreamRef.current.getVideoTracks()[0];
-        if (oldVideoTrack) { localStreamRef.current.removeTrack(oldVideoTrack); oldVideoTrack.stop(); }
-        localStreamRef.current.addTrack(newVideoTrack);
-        Object.values(peersRef.current).forEach((peer) => {
-          if (!peer.pc) return;
-          const videoSender = peer.pc.getSenders().find((s) => s.track?.kind === 'video');
-          if (videoSender) {
-            videoSender.replaceTrack(newVideoTrack);
-            applyBitrateLimits(peer.pc, false);
-          }
-        });
-        setIsCameraOff(false);
-      } else {
-        const screenStream = await navigator.mediaDevices.getDisplayMedia({ 
-          video: { frameRate: { ideal: 30 } },
-          audio: {
-            echoCancellation: false,
-            noiseSuppression: false,
-            autoGainControl: false,
-          }
-        });
-        const screenTrack = screenStream.getVideoTracks()[0];
-        const screenAudioTrack = screenStream.getAudioTracks()[0];
-        
-        const oldVideoTrack = localStreamRef.current.getVideoTracks()[0];
-        if (oldVideoTrack) { localStreamRef.current.removeTrack(oldVideoTrack); oldVideoTrack.stop(); }
-        localStreamRef.current.addTrack(screenTrack);
-        
-        // If system audio was captured, replace the mic track temporarily
-        if (screenAudioTrack) {
-          const oldAudioTrack = localStreamRef.current.getAudioTracks()[0];
-          if (oldAudioTrack) { localStreamRef.current.removeTrack(oldAudioTrack); oldAudioTrack.stop(); }
-          localStreamRef.current.addTrack(screenAudioTrack);
-        }
-
-        Object.values(peersRef.current).forEach((peer) => {
-          if (!peer.pc) return;
-          const videoSender = peer.pc.getSenders().find((s) => s.track?.kind === 'video');
-          if (videoSender) {
-            videoSender.replaceTrack(screenTrack);
-            applyBitrateLimits(peer.pc, true);
-          }
-          if (screenAudioTrack) {
-            const audioSender = peer.pc.getSenders().find((s) => s.track?.kind === 'audio');
-            if (audioSender) audioSender.replaceTrack(screenAudioTrack);
-          }
-        });
-        setIsScreenSharing(true);
-        screenTrack.onended = () => toggleScreenShare();
-      }
-    } catch (err) {}
-  }, [isScreenSharing]);
+  }, [cleanUpPC, setLocalStream, setIsMuted, setIsCameraOff, setIsScreenSharing]);
 
   const toggleHand = useCallback(() => {
     setIsHandRaised((prev) => {
@@ -534,9 +289,7 @@ export const useWebRTC = (roomId: string, userName: string, userId: string, acti
       if (socketRef.current && roomId) {
         socketRef.current.emit('toggle-hand', { roomId, socketId: socketRef.current.id, handRaised: nextState });
       }
-      if (nextState) {
-        toast('You raised your hand', { icon: '✋' });
-      }
+      if (nextState) toast('You raised your hand', { icon: '✋' });
       return nextState;
     });
   }, [roomId]);
@@ -544,114 +297,12 @@ export const useWebRTC = (roomId: string, userName: string, userId: string, acti
   const sendReaction = useCallback((emoji: string) => {
     if (socketRef.current && roomId) {
       socketRef.current.emit('reaction', { roomId, socketId: socketRef.current.id, emoji });
-      // Dispatch locally as well so we see our own reaction
       window.dispatchEvent(new CustomEvent('reaction-received', { detail: { socketId: 'local', emoji } }));
       toast(`You reacted`, { icon: emoji, duration: 2500 });
     }
   }, [roomId]);
 
-  // AI Summoning Logic
-  const summonAI = useCallback(async (persona: AIPersona = 'lily') => {
-    if (!roomId) return;
-    
-    // Create virtual ID for AI
-    const virtualId = `ai_${Math.random().toString(36).substr(2, 9)}`;
-    const ai = new AIParticipant(persona);
-    const personaConfig = PERSONAS[persona];
-    
-    ai.addEventListener('statechange', ((e: CustomEvent) => {
-      if (peersRef.current[virtualId]) {
-        peersRef.current[virtualId].aiState = e.detail;
-        syncPeersState();
-      }
-    }) as EventListener);
-
-    ai.addEventListener('functioncall', ((e: CustomEvent) => {
-      const call = e.detail;
-      console.log('[useWebRTC] AI Function Call:', call);
-      
-      if (call.name === 'react') {
-        const args = call.args as any;
-        if (args && args.emoji) {
-          if (socketRef.current && roomId) {
-            socketRef.current.emit('reaction', { roomId, socketId: virtualId, emoji: args.emoji });
-            window.dispatchEvent(new CustomEvent('reaction-received', { detail: { socketId: virtualId, emoji: args.emoji } }));
-            toast(`${personaConfig.name} reacted`, { icon: args.emoji, duration: 2500 });
-          }
-        }
-      } else if (call.name === 'raiseHand') {
-        const args = call.args as any;
-        if (args && typeof args.raised === 'boolean') {
-          if (socketRef.current && roomId) {
-            socketRef.current.emit('toggle-hand', { roomId, socketId: virtualId, handRaised: args.raised });
-            toast(`${personaConfig.name} ${args.raised ? 'raised' : 'lowered'} their hand`);
-          }
-        }
-      } else if (call.name === 'changeTheme') {
-        const args = call.args as any;
-        if (args && args.theme) {
-          if (args.theme === 'dark') {
-            document.documentElement.classList.add('dark');
-            localStorage.setItem('theme', 'dark');
-          } else {
-            document.documentElement.classList.remove('dark');
-            localStorage.setItem('theme', 'light');
-          }
-          toast(`${personaConfig.name} changed the theme to ${args.theme}`);
-        }
-      }
-    }) as EventListener);
-
-    await ai.connect("ws://localhost:5002/ai-proxy");
-    
-    if (localStreamRef.current) ai.addStream(localStreamRef.current);
-    
-    // Feed existing remote peers and OTHER existing AIs to the new AI
-    Object.values(peersRef.current).forEach(peer => {
-      if (peer.stream) ai.addStream(peer.stream);
-    });
-
-    // CRITICAL: Feed this NEW AI's stream to ALL OTHER locally hosted AIs so they can hear each other!
-    Object.values(hostedVirtualPeersRef.current).forEach(existingAi => {
-      existingAi.aiInstance.addStream(ai.aiStream);
-    });
-
-    const info: PeerInfo = { socketId: virtualId, userId: virtualId, userName: personaConfig.name };
-    hostedVirtualPeersRef.current[virtualId] = { info, stream: ai.aiStream, aiInstance: ai, pcs: {} };
-    
-    // Add visually to local peers list
-    peersRef.current[virtualId] = { info, stream: ai.aiStream, pc: null as any, dataChannel: null, aiState: ai.getState() };
-    syncPeersState();
-
-    socketRef.current?.emit('add-virtual-user', { roomId, virtualId, userName: personaConfig.name });
-    
-    // We do NOT initiate calls for the virtual user directly here because `user-joined` will prompt others to call us!
-  }, [roomId, syncPeersState]);
-
-  const removeAI = useCallback((virtualId: string) => {
-    if (!roomId || !socketRef.current) return;
-    
-    const hostedPeer = hostedVirtualPeersRef.current[virtualId];
-    if (hostedPeer && hostedPeer.aiInstance) {
-      hostedPeer.aiInstance.disconnect?.();
-    }
-    
-    delete hostedVirtualPeersRef.current[virtualId];
-    
-    const peer = peersRef.current[virtualId];
-    if (peer) {
-      if (peer.pc) peer.pc.close();
-      if (peer.dataChannel) peer.dataChannel.close();
-      delete peersRef.current[virtualId];
-    }
-    
-    socketRef.current.emit('remove-virtual-user', { roomId, virtualId });
-    syncPeersState();
-    toast.success("AI left the call");
-  }, [roomId, syncPeersState]);
-
   useEffect(() => {
-    // Fetch dynamic TURN credentials
     fetch(`${SIGNALING_SERVER}/api/calls/turn-credentials`)
       .then(res => res.json())
       .then(data => {
@@ -699,12 +350,7 @@ export const useWebRTC = (roomId: string, userName: string, userId: string, acti
       users.forEach((user) => initiateCall(user));
     });
 
-    socket.on('user-joined', ({ userName: remoteName }) => {
-      console.log('[Socket] Remote peer joined:', remoteName);
-    });
-
     socket.on('signal-received', async ({ senderSocketId, signalData, targetVirtualId }) => {
-      // INTERCEPT signals for virtual peers we host
       if (targetVirtualId) {
         const vp = hostedVirtualPeersRef.current[targetVirtualId];
         if (!vp) return;
@@ -771,18 +417,43 @@ export const useWebRTC = (roomId: string, userName: string, userId: string, acti
       if (peer) {
         peer.handRaised = handRaised;
         syncPeersState();
-        if (handRaised) {
-          toast(`${peer.info.userName} raised their hand`, { icon: '✋' });
-        }
+        if (handRaised) toast(`${peer.info.userName} raised their hand`, { icon: '✋' });
       }
     });
 
     socket.on('reaction', ({ socketId, emoji }) => {
       const peer = peersRef.current[socketId];
-      if (peer) {
-        toast(`${peer.info.userName} reacted`, { icon: emoji, duration: 2500 });
-      }
+      if (peer) toast(`${peer.info.userName} reacted`, { icon: emoji, duration: 2500 });
       window.dispatchEvent(new CustomEvent('reaction-received', { detail: { socketId, emoji } }));
+    });
+
+    let aiCanvasCtx: CanvasRenderingContext2D | null = null;
+    socket.on('ai-browser-frame', ({ base64Data }) => {
+      const screenId = `ai_screen_browser`;
+      
+      if (!peersRef.current[screenId]) {
+        const canvas = document.createElement('canvas');
+        canvas.width = 1280;
+        canvas.height = 720;
+        aiCanvasCtx = canvas.getContext('2d');
+        const stream = canvas.captureStream(30);
+        
+        const info = { socketId: screenId, userId: screenId, userName: "AI's Browser" };
+        peersRef.current[screenId] = { info, stream, pc: null as any, dataChannel: null, aiState: 'connected' };
+        syncPeersState();
+      }
+      
+      if (aiCanvasCtx) {
+        const img = new Image();
+        img.onload = () => aiCanvasCtx!.drawImage(img, 0, 0, 1280, 720);
+        img.src = 'data:image/jpeg;base64,' + base64Data;
+      }
+      
+      Object.values(hostedVirtualPeersRef.current).forEach(vp => {
+        if (peersRef.current[screenId] && peersRef.current[screenId].stream) {
+          vp.aiInstance.addStream(peersRef.current[screenId].stream);
+        }
+      });
     });
 
     return () => {
@@ -794,7 +465,6 @@ export const useWebRTC = (roomId: string, userName: string, userId: string, acti
     };
   }, [roomId, isMediaReady, userId, userName, createPeerConnection, initiateCall, cleanUpPC, startDiagnostics, syncPeersState]);
 
-  // Feed Watch Party context to AI
   useEffect(() => {
     if (!videoSyncState.url) return;
     Object.values(hostedVirtualPeersRef.current).forEach(vp => {
