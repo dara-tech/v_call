@@ -1,0 +1,24 @@
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 256 256" role="img" aria-label="Teacher">
+  <defs>
+    <linearGradient id="bg" x1="0%" y1="0%" x2="100%" y2="100%">
+      <stop offset="0%" stop-color="#facc15"/>
+      <stop offset="100%" stop-color="#ca8a04"/>
+    </linearGradient>
+    <linearGradient id="skin" x1="0%" y1="0%" x2="0%" y2="100%">
+      <stop offset="0%" stop-color="#ffe8d6"/>
+      <stop offset="100%" stop-color="#d4a574"/>
+    </linearGradient>
+  </defs>
+  <rect width="256" height="256" fill="url(#bg)"/>
+  <ellipse cx="128" cy="228" rx="98" ry="52" fill="#a16207"/>
+  <path d="M78 172 L178 172 L188 228 L68 228 Z" fill="#854d0e"/>
+  <path d="M108 172 L148 172 L142 195 L114 195 Z" fill="#fff"/>
+  <ellipse cx="128" cy="115" rx="50" ry="56" fill="url(#skin)"/>
+  <path d="M88 88 C88 62 168 62 168 88 C168 100 152 82 128 82 C104 82 88 100 88 88Z" fill="#57534e"/>
+  <ellipse cx="108" cy="115" rx="5" ry="6" fill="#44403c"/>
+  <ellipse cx="148" cy="115" rx="5" ry="6" fill="#44403c"/>
+  <path d="M118 138 Q128 145 138 138" fill="none" stroke="#78350f" stroke-width="2.5" stroke-linecap="round"/>
+  <rect x="185" y="155" width="28" height="36" rx="3" fill="#fef3c7" stroke="#854d0e" stroke-width="2"/>
+  <line x1="192" y1="165" x2="206" y2="165" stroke="#854d0e" stroke-width="2"/>
+  <line x1="192" y1="175" x2="206" y2="175" stroke="#854d0e" stroke-width="2"/>
+</svg>

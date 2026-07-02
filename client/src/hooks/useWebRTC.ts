@@ -1,6 +1,6 @@
 import { useEffect, useRef, useState, useCallback } from 'react';
 import { io, Socket } from 'socket.io-client';
-import { AIParticipant, type AIPersona } from '../lib/AIParticipant';
+import { AIParticipant } from '../lib/AIParticipant';
 import { toast } from 'sonner';
 import { useLocalMedia } from './useLocalMedia';
 import { useChatDataChannel } from './useChatDataChannel';
@@ -80,7 +80,8 @@ export function applyBitrateLimits(pc: RTCPeerConnection, isScreenSharing: boole
   }, 1000);
 }
 
-import type { PeerInfo, PeerState, ChatMessage, VideoSyncState, CallStats } from './types';
+import type { PeerInfo, PeerState, CallStats } from './types';
+export type { PeerInfo, PeerState, ChatMessage, VideoSyncState, CallStats } from './types';
 
 export const useWebRTC = (roomId: string, userName: string, userId: string, activeCall?: any) => {
   const [peers, setPeers] = useState<Record<string, PeerState>>({});

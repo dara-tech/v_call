@@ -1,0 +1,21 @@
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 256 256" role="img" aria-label="Monk">
+  <defs>
+    <linearGradient id="bg" x1="0%" y1="0%" x2="100%" y2="100%">
+      <stop offset="0%" stop-color="#a78bfa"/>
+      <stop offset="100%" stop-color="#6d28d9"/>
+    </linearGradient>
+    <linearGradient id="skin" x1="0%" y1="0%" x2="0%" y2="100%">
+      <stop offset="0%" stop-color="#f0d5b8"/>
+      <stop offset="100%" stop-color="#c9a06c"/>
+    </linearGradient>
+  </defs>
+  <rect width="256" height="256" fill="url(#bg)"/>
+  <path d="M40 230 L216 230 L200 170 L56 170 Z" fill="#f97316"/>
+  <path d="M56 170 L200 170 L188 130 L68 130 Z" fill="#ea580c"/>
+  <ellipse cx="128" cy="118" rx="50" ry="56" fill="url(#skin)"/>
+  <ellipse cx="128" cy="72" rx="46" ry="28" fill="url(#skin)"/>
+  <ellipse cx="108" cy="118" rx="5" ry="6" fill="#44403c"/>
+  <ellipse cx="148" cy="118" rx="5" ry="6" fill="#44403c"/>
+  <path d="M120 138 Q128 144 136 138" fill="none" stroke="#78716c" stroke-width="2.5" stroke-linecap="round"/>
+  <circle cx="128" cy="88" r="3" fill="#78716c" opacity="0.35"/>
+</svg>

@@ -1,0 +1,21 @@
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 256 256" role="img" aria-label="Imam">
+  <defs>
+    <linearGradient id="bg" x1="0%" y1="0%" x2="100%" y2="100%">
+      <stop offset="0%" stop-color="#2dd4bf"/>
+      <stop offset="100%" stop-color="#0d9488"/>
+    </linearGradient>
+    <linearGradient id="skin" x1="0%" y1="0%" x2="0%" y2="100%">
+      <stop offset="0%" stop-color="#f0d5b8"/>
+      <stop offset="100%" stop-color="#c9956a"/>
+    </linearGradient>
+  </defs>
+  <rect width="256" height="256" fill="url(#bg)"/>
+  <path d="M68 230 L188 230 L176 172 L80 172 Z" fill="#134e4a"/>
+  <path d="M108 172 L148 172 L142 228 L114 228 Z" fill="#fff"/>
+  <ellipse cx="128" cy="118" rx="50" ry="56" fill="url(#skin)"/>
+  <path d="M78 88 C78 62 178 62 178 88 L178 105 L78 105 Z" fill="#fff"/>
+  <ellipse cx="108" cy="118" rx="5" ry="6" fill="#44403c"/>
+  <ellipse cx="148" cy="118" rx="5" ry="6" fill="#44403c"/>
+  <path d="M118 140 Q128 146 138 140" fill="none" stroke="#57534e" stroke-width="2.5" stroke-linecap="round"/>
+  <path d="M128 62 L118 88 L138 88 Z" fill="#fff"/>
+</svg>

@@ -1,0 +1,24 @@
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 256 256" role="img" aria-label="Lily">
+  <defs>
+    <linearGradient id="bg" x1="0%" y1="0%" x2="100%" y2="100%">
+      <stop offset="0%" stop-color="#22d3ee"/>
+      <stop offset="100%" stop-color="#0891b2"/>
+    </linearGradient>
+    <linearGradient id="skin" x1="0%" y1="0%" x2="0%" y2="100%">
+      <stop offset="0%" stop-color="#ffd8c9"/>
+      <stop offset="100%" stop-color="#e8b4a0"/>
+    </linearGradient>
+  </defs>
+  <rect width="256" height="256" fill="url(#bg)"/>
+  <ellipse cx="128" cy="228" rx="98" ry="52" fill="#0e7490"/>
+  <path d="M62 120 C62 55 194 55 194 120 C194 170 170 210 128 210 C86 210 62 170 62 120Z" fill="#1e293b"/>
+  <path d="M78 95 C78 45 178 45 178 95 C178 145 155 185 128 185 C101 185 78 145 78 95Z" fill="url(#skin)"/>
+  <ellipse cx="108" cy="118" rx="6" ry="8" fill="#1e293b"/>
+  <ellipse cx="148" cy="118" rx="6" ry="8" fill="#1e293b"/>
+  <circle cx="110" cy="116" r="2" fill="#fff"/>
+  <circle cx="150" cy="116" r="2" fill="#fff"/>
+  <path d="M118 142 Q128 152 138 142" fill="none" stroke="#c2410c" stroke-width="3" stroke-linecap="round"/>
+  <ellipse cx="102" cy="132" rx="8" ry="5" fill="#fda4af" opacity="0.45"/>
+  <ellipse cx="154" cy="132" rx="8" ry="5" fill="#fda4af" opacity="0.45"/>
+  <path d="M118 78 C128 68 138 78 128 88Z" fill="#1e293b"/>
+</svg>

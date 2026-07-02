@@ -1,0 +1,23 @@
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 256 256" role="img" aria-label="Developer">
+  <defs>
+    <linearGradient id="bg" x1="0%" y1="0%" x2="100%" y2="100%">
+      <stop offset="0%" stop-color="#60a5fa"/>
+      <stop offset="100%" stop-color="#2563eb"/>
+    </linearGradient>
+    <linearGradient id="skin" x1="0%" y1="0%" x2="0%" y2="100%">
+      <stop offset="0%" stop-color="#ffe4cc"/>
+      <stop offset="100%" stop-color="#d4a574"/>
+    </linearGradient>
+  </defs>
+  <rect width="256" height="256" fill="url(#bg)"/>
+  <ellipse cx="128" cy="228" rx="98" ry="52" fill="#1d4ed8"/>
+  <path d="M70 175 L186 175 L198 230 L58 230 Z" fill="#1e3a8a"/>
+  <ellipse cx="128" cy="118" rx="52" ry="58" fill="url(#skin)"/>
+  <path d="M82 92 C82 58 174 58 174 92 L174 108 L82 108 Z" fill="#334155"/>
+  <rect x="82" y="108" width="92" height="8" fill="#475569"/>
+  <ellipse cx="108" cy="118" rx="10" ry="12" fill="none" stroke="#334155" stroke-width="3"/>
+  <ellipse cx="148" cy="118" rx="10" ry="12" fill="none" stroke="#334155" stroke-width="3"/>
+  <line x1="118" y1="118" x2="138" y2="118" stroke="#334155" stroke-width="3"/>
+  <path d="M118 145 Q128 150 138 145" fill="none" stroke="#57534e" stroke-width="2.5" stroke-linecap="round"/>
+  <text x="128" y="205" text-anchor="middle" font-size="14" fill="#93c5fd" font-family="monospace">&lt;/&gt;</text>
+</svg>

@@ -189,7 +189,7 @@ export const WatchPartyPlayer: React.FC<WatchPartyPlayerProps> = ({
     <div className="flex flex-col h-full w-full bg-zinc-950 overflow-hidden">
 
       {/* ── Header ── */}
-      <div className="shrink-0 flex items-center justify-end px-4 h-11 border-b border-zinc-900">
+      <div className="flex h-10 shrink-0 items-center justify-end border-b border-zinc-900 px-3 sm:h-11 sm:px-4">
         <div className="flex items-center gap-1.5">
           {isPlayerVisible && (
             <Button variant="ghost" size="sm" onClick={handleReset}
@@ -207,8 +207,8 @@ export const WatchPartyPlayer: React.FC<WatchPartyPlayerProps> = ({
       {/* ── Search bar ── */}
       {(showSearch || !videoSyncState.url) && (
         <div className="shrink-0 border-b border-zinc-900">
-          <form onSubmit={handleSearchSubmit} className="relative flex items-center px-4 py-3">
-            <div className="absolute left-7 flex items-center pointer-events-none">
+          <form onSubmit={handleSearchSubmit} className="relative flex items-center px-3 py-2 sm:px-4 sm:py-3">
+            <div className="absolute left-6 flex items-center pointer-events-none sm:left-7">
               {isSearching
                 ? <Loader2 className="size-3.5 text-brand-cyan animate-spin" />
                 : <Search className="size-3.5 text-zinc-500" />}
@@ -217,12 +217,12 @@ export const WatchPartyPlayer: React.FC<WatchPartyPlayerProps> = ({
               placeholder="Search YouTube + DailyMotion..."
               value={searchQuery}
               onChange={handleQueryChange}
-              className="pl-9 pr-8 h-9 text-xs bg-zinc-900 border-zinc-800 text-zinc-200 placeholder:text-zinc-600 focus-visible:ring-brand-cyan/40 focus-visible:border-brand-cyan/50 rounded-lg w-full"
+              className="h-9 w-full rounded-lg border-zinc-800 bg-zinc-900 pl-9 pr-8 text-xs text-zinc-200 placeholder:text-zinc-600 focus-visible:border-brand-cyan/50 focus-visible:ring-brand-cyan/40"
             />
             {searchQuery && (
-              <button type="button"
+              <button type="button" title="Clear search"
                 onClick={() => { setSearchQuery(''); doSearch('', true); }}
-                className="absolute right-7 text-zinc-500 hover:text-zinc-300 transition-colors">
+                className="absolute right-6 text-zinc-500 transition-colors hover:text-zinc-300 sm:right-7">
                 <X className="size-3.5" />
               </button>
             )}
@@ -230,12 +230,12 @@ export const WatchPartyPlayer: React.FC<WatchPartyPlayerProps> = ({
 
           {/* Source filter tabs — shown only when results exist */}
           {hasResults && (
-            <div className="flex items-center gap-0.5 px-4 pb-2">
+            <div className="flex items-center gap-1 overflow-x-auto px-3 pb-2 scrollbar-none sm:gap-0.5 sm:px-4">
               {(['all', 'youtube', 'dailymotion'] as FilterSource[]).map(src => {
                 const meta = src === 'all' ? null : SOURCE_META[src];
                 const count = src === 'all' ? allResults.length : (sources[src] ?? 0);
                 return (
-                  <button key={src}
+                  <Button key={src}
                     onClick={() => setFilter(src)}
                     className={`flex items-center gap-1.5 px-2.5 py-1 rounded-full text-[10px] font-semibold transition-all ${
                       filter === src
@@ -245,19 +245,22 @@ export const WatchPartyPlayer: React.FC<WatchPartyPlayerProps> = ({
                     {meta && <span className={`size-1.5 rounded-full ${meta.dot}`} />}
                     {src === 'all' ? 'All' : meta!.label}
                     <span className="text-[9px] opacity-60">{count}</span>
-                  </button>
+                  </Button>
                 );
               })}
             </div>
           )}
 
           {/* Paste URL toggle */}
-          <div className="px-4 pb-3">
-            <button onClick={() => setShowUrlInput(v => !v)}
-              className="flex items-center gap-1.5 text-[10px] text-zinc-500 hover:text-brand-cyan transition-colors">
-              <Link2 className="size-3" />
-              Or paste a link from Vimeo, Twitch, Facebook…
-              <ChevronRight className={`size-3 transition-transform ${showUrlInput ? 'rotate-90' : ''}`} />
+          <div className="px-3 pb-2 sm:px-4 sm:pb-3">
+            <button
+              type="button"
+              onClick={() => setShowUrlInput((v) => !v)}
+              className="flex w-full items-center gap-1.5 text-left text-[10px] text-zinc-500 transition-colors hover:text-brand-cyan"
+            >
+              <Link2 className="size-3 shrink-0" />
+              <span className="truncate">Paste link (Vimeo, Twitch…)</span>
+              <ChevronRight className={`size-3 shrink-0 transition-transform ${showUrlInput ? 'rotate-90' : ''}`} />
             </button>
 
             {showUrlInput && (
@@ -316,11 +319,11 @@ export const WatchPartyPlayer: React.FC<WatchPartyPlayerProps> = ({
               </div>
             </div>
 
-            <div className="grid grid-cols-1 sm:grid-cols-2 md:grid-cols-3 lg:grid-cols-4 gap-4 p-4">
+            <div className="grid grid-cols-1 gap-3 p-3 sm:grid-cols-2 sm:gap-4 sm:p-4 md:grid-cols-3 lg:grid-cols-4">
               {filteredResults.map((video) => {
                 const meta = SOURCE_META[video.source];
                 return (
-                  <button key={`${video.source}-${video.id}`}
+                  <Button key={`${video.source}-${video.id}`}
                     onClick={() => handleSelectVideo(video)}
                     onMouseEnter={() => setHoveredId(`${video.source}-${video.id}`)}
                     onMouseLeave={() => setHoveredId(null)}
@@ -354,7 +357,7 @@ export const WatchPartyPlayer: React.FC<WatchPartyPlayerProps> = ({
                         <p className="text-[11px] font-medium text-zinc-400 truncate">{video.author}</p>
                       </div>
                     </div>
-                  </button>
+                  </Button>
                 );
               })}
             </div>
@@ -364,7 +367,7 @@ export const WatchPartyPlayer: React.FC<WatchPartyPlayerProps> = ({
         {/* Skeleton */}
         {isSearching && (
           <div className="absolute inset-0 overflow-y-auto">
-            <div className="grid grid-cols-1 sm:grid-cols-2 md:grid-cols-3 lg:grid-cols-4 gap-4 p-4">
+            <div className="grid grid-cols-1 gap-3 p-3 sm:grid-cols-2 sm:gap-4 sm:p-4 md:grid-cols-3 lg:grid-cols-4">
               {[...Array(12)].map((_, i) => (
                 <div key={i} className="flex flex-col gap-2.5 p-2">
                   <div className="w-full aspect-video rounded-lg bg-zinc-800/80 animate-pulse" />
@@ -381,7 +384,7 @@ export const WatchPartyPlayer: React.FC<WatchPartyPlayerProps> = ({
 
         {/* Player */}
         {isPlayerVisible && (
-          <div className="absolute top-0 inset-x-0 bottom-[84px] bg-black shadow-2xl">
+          <div className="absolute inset-0 bg-black shadow-2xl">
             {isDailyMotion && dmVideoId ? (
               <DailyMotionSyncPlayer
                 ref={playerRef}

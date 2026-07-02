@@ -1,6 +1,8 @@
 import { useCallback, type MutableRefObject } from 'react';
 import { Socket } from 'socket.io-client';
-import { AIParticipant, PERSONAS, type AIPersona } from '../lib/AIParticipant';
+import { AIParticipant } from '../lib/AIParticipant';
+import { PERSONAS } from '../lib/ai/personas';
+import type { AIPersona } from '../lib/ai/types';
 import type { PeerState, PeerInfo } from './types';
 import { toast } from 'sonner';
 

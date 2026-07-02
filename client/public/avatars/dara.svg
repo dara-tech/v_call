@@ -1,0 +1,23 @@
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 256 256" role="img" aria-label="Dara">
+  <defs>
+    <linearGradient id="bg" x1="0%" y1="0%" x2="100%" y2="100%">
+      <stop offset="0%" stop-color="#34d399"/>
+      <stop offset="100%" stop-color="#059669"/>
+    </linearGradient>
+    <linearGradient id="skin" x1="0%" y1="0%" x2="0%" y2="100%">
+      <stop offset="0%" stop-color="#f5cba7"/>
+      <stop offset="100%" stop-color="#d4a574"/>
+    </linearGradient>
+  </defs>
+  <rect width="256" height="256" fill="url(#bg)"/>
+  <ellipse cx="128" cy="228" rx="98" ry="52" fill="#047857"/>
+  <path d="M88 175 L168 175 L180 230 L76 230 Z" fill="#064e3b"/>
+  <ellipse cx="128" cy="118" rx="54" ry="60" fill="url(#skin)"/>
+  <path d="M82 88 C82 52 174 52 174 88 C174 105 160 92 128 92 C96 92 82 105 82 88Z" fill="#292524"/>
+  <ellipse cx="108" cy="118" rx="6" ry="7" fill="#292524"/>
+  <ellipse cx="148" cy="118" rx="6" ry="7" fill="#292524"/>
+  <circle cx="110" cy="116" r="2" fill="#fff"/>
+  <circle cx="150" cy="116" r="2" fill="#fff"/>
+  <path d="M118 145 Q128 152 138 145" fill="none" stroke="#78350f" stroke-width="3" stroke-linecap="round"/>
+  <path d="M118 152 Q128 158 138 152" fill="none" stroke="#57534e" stroke-width="2" opacity="0.5"/>
+</svg>

@@ -50,7 +50,7 @@ export const Toolbar: React.FC<ToolbarProps> = ({
 
   return (
     <TooltipProvider delayDuration={200}>
-      <div className="flex items-center justify-center gap-1 sm:gap-2 bg-zinc-900/60 backdrop-blur-3xl p-2 sm:p-2 border border-white/10 rounded-[2rem] sm:rounded-full shadow-[0_8px_32px_rgba(0,0,0,0.6)] relative z-10 hover:bg-zinc-900/70 transition-colors w-max max-w-[95vw] overflow-x-auto snap-x snap-mandatory [&::-webkit-scrollbar]:hidden [-ms-overflow-style:none] [scrollbar-width:none]">
+      <div className="flex w-full max-w-full items-center justify-center gap-0.5 overflow-x-auto rounded-2xl border border-white/10 bg-zinc-900/60 p-1.5 shadow-[0_8px_32px_rgba(0,0,0,0.6)] backdrop-blur-3xl scrollbar-none sm:gap-2 sm:rounded-full sm:p-2 [&::-webkit-scrollbar]:hidden [-ms-overflow-style:none]">
         
         {/* Toggle Audio */}
         <Tooltip>

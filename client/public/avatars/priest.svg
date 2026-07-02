@@ -1,0 +1,21 @@
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 256 256" role="img" aria-label="Priest">
+  <defs>
+    <linearGradient id="bg" x1="0%" y1="0%" x2="100%" y2="100%">
+      <stop offset="0%" stop-color="#818cf8"/>
+      <stop offset="100%" stop-color="#4338ca"/>
+    </linearGradient>
+    <linearGradient id="skin" x1="0%" y1="0%" x2="0%" y2="100%">
+      <stop offset="0%" stop-color="#f5e6d3"/>
+      <stop offset="100%" stop-color="#c9a06c"/>
+    </linearGradient>
+  </defs>
+  <rect width="256" height="256" fill="url(#bg)"/>
+  <path d="M60 230 L196 230 L184 168 L72 168 Z" fill="#1e1b4b"/>
+  <path d="M108 168 L148 168 L142 228 L114 228 Z" fill="#fff"/>
+  <rect x="122" y="148" width="12" height="28" fill="#fff"/>
+  <ellipse cx="128" cy="112" rx="48" ry="54" fill="url(#skin)"/>
+  <path d="M92 82 C92 58 164 58 164 82 C164 95 148 78 128 78 C108 78 92 95 92 82Z" fill="#78716c"/>
+  <ellipse cx="108" cy="112" rx="5" ry="6" fill="#44403c"/>
+  <ellipse cx="148" cy="112" rx="5" ry="6" fill="#44403c"/>
+  <path d="M120 135 Q128 140 136 135" fill="none" stroke="#78716c" stroke-width="2" stroke-linecap="round"/>
+</svg>

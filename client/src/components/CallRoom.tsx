@@ -7,9 +7,14 @@ import { DeviceSelect } from './DeviceSelect';
 import { WatchPartyPlayer } from './WatchPartyPlayer';
 import { Dialog, DialogContent, DialogHeader, DialogTitle } from '@/components/ui/dialog';
 import { Button } from '@/components/ui/button';
-import { MicOff, VideoOff, Users, Bot, Hand, X} from 'lucide-react';
+import { MicOff, Users, Hand } from 'lucide-react';
 import confetti from 'canvas-confetti';
 import { Toaster } from 'sonner';
+import { AiPersonaAvatar } from './AiPersonaAvatar';
+import { AiPersonaBar } from './AiPersonaBar';
+import { WaitingRoomHero } from './WaitingRoomHero';
+import { PERSONAS } from '../lib/ai/personas';
+import type { AIPersona } from '../lib/ai/types';
 
 interface CallRoomProps {
   roomId: string;
@@ -75,7 +80,7 @@ const RemotePeerVideo: React.FC<{ peer: PeerState }> = ({ peer }) => {
         />
       )}
       {!hasVideo && isAI && (
-        <img src={`/avatars/${peer.info.userName.toLowerCase()}.png`} className="w-full h-full object-cover" alt={peer.info.userName} />
+        <AiPersonaAvatar name={peer.info.userName} />
       )}
       {(!peer.stream || (!hasVideo && !isAI)) && (
         <div className="flex flex-col items-center justify-center text-zinc-600 gap-2">
@@ -149,12 +154,22 @@ export const CallRoom: React.FC<CallRoomProps> = ({
     onWatchPartyChange?.(showWatchParty);
   }, [showWatchParty, onWatchPartyChange]);
 
-  // Track if AIs are in the room
-  const lilyPeerId = Object.entries(peers).find(([_, p]) => p.info.userName === 'Lily')?.[0];
-  const daraPeerId = Object.entries(peers).find(([_, p]) => p.info.userName === 'Dara')?.[0];
-  const monkPeerId = Object.entries(peers).find(([_, p]) => p.info.userName === 'Monk')?.[0];
-  const sisamouthPeerId = Object.entries(peers).find(([_, p]) => p.info.userName === 'Sisamouth')?.[0];
-  const developerPeerId = Object.entries(peers).find(([_, p]) => p.info.userName === 'Developer')?.[0];
+  const activePersonas = useMemo(() => {
+    const map: Partial<Record<AIPersona, string>> = {};
+    for (const [socketId, peer] of Object.entries(peers)) {
+      for (const [key, config] of Object.entries(PERSONAS)) {
+        if (peer.info.userName === config.name) {
+          map[key as AIPersona] = socketId;
+        }
+      }
+    }
+    return map;
+  }, [peers]);
+
+  const userInitial = useMemo(
+    () => userName.replace(/[^a-zA-Z0-9]/g, '').slice(0, 2).toUpperCase() || 'ME',
+    [userName],
+  );
 
   // Video element references
   const localVideoRef = useRef<HTMLVideoElement>(null);
@@ -261,16 +276,24 @@ export const CallRoom: React.FC<CallRoomProps> = ({
   }, [peerList.length]);
 
   return (
-    <div className="flex flex-col flex-1 h-[100dvh] w-full overflow-hidden bg-[#0a0a0a] font-sans text-zinc-300 relative z-20">
-      <Toaster theme="dark" position="top-right" />
+    <div className="relative z-20 flex h-dvh w-full flex-col overflow-hidden bg-[#0a0a0a] font-sans text-zinc-300">
+      <Toaster theme="dark" position="top-center" />
 
-      {/* Main Container */}
-      <div className={`w-full h-full flex overflow-hidden ${showWatchParty ? 'flex-col sm:flex-row' : ''}`}>
-        
-        {/* Watch Party Main Presentation Area */}
+      {/* AI bar — hidden on mobile while watch party is open */}
+      <div className={`shrink-0 pt-safe ${showWatchParty ? 'hidden sm:block' : ''}`}>
+        <AiPersonaBar
+          activePersonas={activePersonas}
+          onSummon={summonAI}
+          onRemove={removeAI}
+          className="pb-2 pt-2"
+        />
+      </div>
+
+      {/* Main stage */}
+      <div className={`relative flex min-h-0 flex-1 overflow-hidden ${showWatchParty ? 'flex-col sm:flex-row' : ''}`}>
         {showWatchParty && (
-          <div className="flex-1 bg-black relative z-10 flex pointer-events-auto">
-            <WatchPartyPlayer 
+          <div className="flex min-h-0 min-w-0 flex-1 flex-col">
+            <WatchPartyPlayer
               videoSyncState={videoSyncState}
               broadcastVideoState={broadcastVideoState}
               onClose={() => setShowWatchParty(false)}
@@ -278,168 +301,84 @@ export const CallRoom: React.FC<CallRoomProps> = ({
           </div>
         )}
 
-        {/* Video Area (Grid or Sidebar) */}
-        <div className={`relative bg-[#0a0a0a] flex flex-col transition-all duration-300 ${
-          showWatchParty
-            ? 'w-full h-40 sm:h-full sm:w-72 border-t sm:border-t-0 sm:border-l border-zinc-900 shrink-0 p-2 overflow-y-auto overflow-x-auto sm:overflow-x-hidden'
-            : 'w-full h-full p-0 sm:p-4 overflow-y-auto'
-        }`}>
-          
-          {hasPeers ? (
-             <div className={
-               showWatchParty 
-                 ? "flex flex-row sm:flex-col gap-2 w-max sm:w-full h-full pb-20 sm:pb-0"
-                 : `w-full h-full max-w-7xl mx-auto grid gap-4 ${gridLayoutClass} auto-rows-fr pt-16 pb-24 px-4`
-             }>
+        {/* Participants / waiting room — sidebar on desktop, hidden on mobile during watch party */}
+        <div
+          className={`relative min-h-0 bg-[#0a0a0a] ${
+            showWatchParty
+              ? 'hidden min-w-0 sm:flex sm:h-full sm:w-72 sm:shrink-0 sm:flex-col sm:border-l sm:border-zinc-900 sm:p-2'
+              : 'flex min-w-0 flex-1 flex-col'
+          }`}
+        >
+          <div className="min-h-0 flex-1 overflow-y-auto overflow-x-hidden">
+            {hasPeers ? (
+              <div
+                className={
+                  showWatchParty
+                    ? 'flex h-full flex-row gap-2 overflow-x-auto pb-2 sm:flex-col sm:overflow-x-hidden sm:overflow-y-auto sm:pb-0'
+                    : `mx-auto grid h-full w-full max-w-7xl auto-rows-fr gap-2 px-2 py-2 sm:gap-4 sm:px-4 sm:py-4 ${gridLayoutClass}`
+                }
+              >
                 {peerList.map((peer) => (
-                  <div key={peer.info.socketId} className={showWatchParty ? "w-48 sm:w-full shrink-0 aspect-video" : "w-full h-full"}>
+                  <div
+                    key={peer.info.socketId}
+                    className={
+                      showWatchParty
+                        ? 'aspect-video w-40 shrink-0 sm:w-full'
+                        : 'min-h-[180px] w-full sm:min-h-0'
+                    }
+                  >
                     <RemotePeerVideo peer={peer} />
                   </div>
                 ))}
-             </div>
-          ) : (
-            // Lobby placeholder when waiting
-            <div className={`w-full h-full flex flex-col items-center justify-center ${showWatchParty ? 'opacity-50 scale-75' : ''}`}>
-              <div className="flex flex-col items-center gap-4 text-center p-8 max-w-sm">
-                <div className="size-12 rounded-full border border-dashed border-zinc-700 flex items-center justify-center animate-spin border-t-zinc-400" />
-                <div className="space-y-1">
-                  <h3 className="text-sm font-semibold text-zinc-200">Waiting for participants...</h3>
-                  <p className="text-xs text-zinc-500 leading-normal">
-                    Share your room code <span className="font-mono bg-zinc-900 px-1 py-0.5 border border-zinc-800 rounded">{roomId}</span> with someone to start the group call.
-                  </p>
-                </div>
               </div>
-            </div>
-          )}
-
-          {/* Top Center AI Controls */}
-          <div className="absolute top-4 left-1/2 -translate-x-1/2 z-40 flex items-center gap-1 bg-black/60 backdrop-blur-xl border border-white/10 p-1.5 rounded-full shadow-2xl pointer-events-auto transition-all">
-            {!lilyPeerId ? (
-               <button className="flex items-center gap-1.5 px-3 py-1.5 rounded-full bg-cyan-500/10 hover:bg-cyan-500/20 text-cyan-400 text-xs font-medium transition-colors" onClick={() => summonAI('lily')}>
-                 <Bot className="size-3.5" /> Lily
-               </button>
             ) : (
-               <button className="flex items-center gap-1.5 px-3 py-1.5 rounded-full bg-cyan-500/20 hover:bg-red-500/20 text-cyan-400 hover:text-red-400 text-xs font-medium transition-colors group" onClick={() => removeAI(lilyPeerId)}>
-                 <Bot className="size-3.5 group-hover:hidden" />
-                 <X className="size-3.5 hidden group-hover:block" />
-                 Lily
-               </button>
-            )}
-            
-            <div className="w-px h-4 bg-white/10 mx-1" />
-
-            {!daraPeerId ? (
-               <button className="flex items-center gap-1.5 px-3 py-1.5 rounded-full bg-emerald-500/10 hover:bg-emerald-500/20 text-emerald-400 text-xs font-medium transition-colors" onClick={() => summonAI('dara')}>
-                 <Bot className="size-3.5" /> Dara
-               </button>
-            ) : (
-               <button className="flex items-center gap-1.5 px-3 py-1.5 rounded-full bg-emerald-500/20 hover:bg-red-500/20 text-emerald-400 hover:text-red-400 text-xs font-medium transition-colors group" onClick={() => removeAI(daraPeerId)}>
-                 <Bot className="size-3.5 group-hover:hidden" />
-                 <X className="size-3.5 hidden group-hover:block" />
-                 Dara
-               </button>
-            )}
-
-            <div className="w-px h-4 bg-white/10 mx-1" />
-
-            {!monkPeerId ? (
-               <button className="flex items-center gap-1.5 px-3 py-1.5 rounded-full bg-violet-500/10 hover:bg-violet-500/20 text-violet-400 text-xs font-medium transition-colors" onClick={() => summonAI('monk')}>
-                 <Bot className="size-3.5" /> Monk
-               </button>
-            ) : (
-               <button className="flex items-center gap-1.5 px-3 py-1.5 rounded-full bg-violet-500/20 hover:bg-red-500/20 text-violet-400 hover:text-red-400 text-xs font-medium transition-colors group" onClick={() => removeAI(monkPeerId)}>
-                 <Bot className="size-3.5 group-hover:hidden" />
-                 <X className="size-3.5 hidden group-hover:block" />
-                 Monk
-               </button>
-            )}
-
-            <div className="w-px h-4 bg-white/10 mx-1" />
-
-            {!sisamouthPeerId ? (
-               <button className="flex items-center gap-1.5 px-3 py-1.5 rounded-full bg-orange-500/10 hover:bg-orange-500/20 text-orange-400 text-xs font-medium transition-colors" onClick={() => summonAI('sisamouth')}>
-                 <Bot className="size-3.5" /> Sisamouth
-               </button>
-            ) : (
-               <button className="flex items-center gap-1.5 px-3 py-1.5 rounded-full bg-orange-500/20 hover:bg-red-500/20 text-orange-400 hover:text-red-400 text-xs font-medium transition-colors group" onClick={() => removeAI(sisamouthPeerId)}>
-                 <Bot className="size-3.5 group-hover:hidden" />
-                 <X className="size-3.5 hidden group-hover:block" />
-                 Sisamouth
-               </button>
-            )}
-
-            <div className="w-px h-4 bg-white/10 mx-1" />
-
-            {!developerPeerId ? (
-               <button className="flex items-center gap-1.5 px-3 py-1.5 rounded-full bg-blue-500/10 hover:bg-blue-500/20 text-blue-400 text-xs font-medium transition-colors" onClick={() => summonAI('developer')}>
-                 <Bot className="size-3.5" /> Senior Dev
-               </button>
-            ) : (
-               <button className="flex items-center gap-1.5 px-3 py-1.5 rounded-full bg-blue-500/20 hover:bg-red-500/20 text-blue-400 hover:text-red-400 text-xs font-medium transition-colors group" onClick={() => removeAI(developerPeerId)}>
-                 <Bot className="size-3.5 group-hover:hidden" />
-                 <X className="size-3.5 hidden group-hover:block" />
-                 Senior Dev
-               </button>
+              <WaitingRoomHero
+                roomId={roomId}
+                onCopyInvite={handleCopyInvite}
+                isCopied={isCopied}
+              />
             )}
           </div>
 
-          {/* Local Video Picture-in-Picture Frame (PIP) */}
-          <div className={`absolute z-30 overflow-hidden rounded-2xl shadow-xl transition-all duration-300 ring-2 ring-white/10 bg-zinc-950 flex flex-col items-center justify-center top-4 right-4 w-24 sm:w-32 aspect-video hover:scale-105 hover:shadow-[0_8px_32px_rgba(34,211,238,0.2)]`}>
+          {/* Local PIP — hide on mobile during watch party */}
+          <div
+            className={`absolute right-3 top-3 z-30 aspect-video w-20 overflow-hidden rounded-xl bg-zinc-950 shadow-lg ring-1 ring-white/15 sm:right-4 sm:top-4 sm:w-28 sm:rounded-2xl md:w-32 ${
+              showWatchParty ? 'hidden sm:block' : ''
+            }`}
+          >
             {localStream && !isCameraOff ? (
               <video
                 ref={localVideoRef}
                 autoPlay
                 playsInline
                 muted
-                className="w-full h-full object-cover scale-x-[-1]"
+                className="h-full w-full scale-x-[-1] object-cover"
               />
             ) : (
-              <div className="w-full h-full flex flex-col items-center justify-center gap-1.5 text-zinc-600 bg-zinc-950">
-                <VideoOff className="size-5" />
-                <span className="text-[9px]">Camera disabled</span>
+              <div className="flex h-full w-full items-center justify-center bg-gradient-to-br from-zinc-800 to-zinc-950">
+                <div className="flex size-8 items-center justify-center rounded-full bg-gradient-to-br from-cyan-500/30 to-violet-500/30 text-[10px] font-bold text-white sm:size-10 sm:text-xs">
+                  {userInitial}
+                </div>
               </div>
             )}
 
-            {/* Local mute icons indicators */}
             {isMuted && (
-              <div className="absolute top-2 right-2 size-5 bg-brand-rose text-white flex items-center justify-center rounded-full shadow-md">
-                <MicOff className="size-3" />
+              <div className="absolute right-1.5 top-1.5 flex size-4 items-center justify-center rounded-full bg-brand-rose text-white shadow-md sm:right-2 sm:top-2 sm:size-5">
+                <MicOff className="size-2.5 sm:size-3" />
               </div>
             )}
 
             {isHandRaised && (
-              <div className="absolute bottom-2 left-2 bg-black/40 backdrop-blur-xl border border-white/10 p-1.5 rounded-full shadow-md flex items-center justify-center">
-                <Hand className="size-3 text-amber-400 animate-bounce" />
+              <div className="absolute bottom-1.5 left-1.5 flex items-center justify-center rounded-full border border-white/10 bg-black/40 p-1 backdrop-blur-xl sm:bottom-2 sm:left-2 sm:p-1.5">
+                <Hand className="size-2.5 animate-bounce text-amber-400 sm:size-3" />
               </div>
             )}
           </div>
-
-          {/* Bottom Floating Control Bar (Normal Mode) */}
-          {!showWatchParty && (
-            <div className="absolute bottom-4 left-1/2 -translate-x-1/2 z-40 w-[95%] sm:w-auto flex justify-center">
-              <Toolbar
-                isMuted={isMuted}
-                isCameraOff={isCameraOff}
-                isScreenSharing={isScreenSharing}
-                showStats={showStats}
-                showWatchParty={showWatchParty}
-                onToggleMute={toggleMute}
-                onToggleCamera={toggleCamera}
-                onToggleScreenShare={toggleScreenShare}
-                onToggleStats={() => setShowStats(!showStats)}
-                onToggleWatchParty={() => setShowWatchParty(!showWatchParty)}
-                onLeaveCall={handleExitRoom}
-                onCopyInvite={handleCopyInvite}
-                isCopied={isCopied}
-              />
-            </div>
-          )}
-
         </div>
 
-        {/* Right Sidebar - Dynamic Sub-pane */}
+        {/* Chat panel — full-screen overlay on mobile */}
         {showStats && (
-          <div className="w-full sm:w-80 border-l border-zinc-900/50 bg-zinc-950/95 sm:bg-zinc-950/80 backdrop-blur flex flex-col z-20 shrink-0 pointer-events-auto shadow-[-20px_0_40px_rgba(0,0,0,0.5)]">
+          <div className="absolute inset-0 z-40 flex bg-zinc-950 sm:static sm:inset-auto sm:z-20 sm:w-80 sm:shrink-0 sm:border-l sm:border-zinc-900/50 sm:bg-zinc-950/80 sm:backdrop-blur">
             <ChatPanel
               messages={chatMessages}
               peers={peerList}
@@ -449,12 +388,11 @@ export const CallRoom: React.FC<CallRoomProps> = ({
             />
           </div>
         )}
-
       </div>
 
-      {/* Floating Control Bar (Presentation Mode - Anchored to entire screen) */}
-      {showWatchParty && (
-        <div className="absolute bottom-6 left-1/2 -translate-x-1/2 sm:-translate-x-[calc(50%+9rem)] z-50 pointer-events-auto transition-all">
+      {/* Fixed bottom toolbar — always in layout flow, safe-area aware */}
+      <div className="shrink-0 border-t border-zinc-900/60 bg-[#0a0a0a]/95 px-safe pb-safe pt-2 backdrop-blur-xl">
+        <div className="flex justify-center">
           <Toolbar
             isMuted={isMuted}
             isCameraOff={isCameraOff}
@@ -467,11 +405,12 @@ export const CallRoom: React.FC<CallRoomProps> = ({
             onToggleStats={() => setShowStats(!showStats)}
             onToggleWatchParty={() => setShowWatchParty(!showWatchParty)}
             onLeaveCall={handleExitRoom}
+            onCopyInvite={!showWatchParty ? handleCopyInvite : undefined}
+            isCopied={isCopied}
           />
         </div>
-      )}
+      </div>
 
-      {/* Hardware Device Swapping Dialog modal */}
       <Dialog open={showSettings} onOpenChange={setShowSettings}>
         <DialogContent className="bg-zinc-950 border border-zinc-800 text-zinc-200 sm:max-w-md">
           <DialogHeader>
