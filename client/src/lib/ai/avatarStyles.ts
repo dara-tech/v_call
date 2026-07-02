@@ -18,6 +18,8 @@ export const AI_AVATAR_STYLES: Record<string, { from: string; to: string; initia
   ganthy: { from: '#f5f5f4', to: '#78716c', initial: 'Ga' },
   newtorn: { from: '#64748b', to: '#1e293b', initial: 'N' },
   buddah: { from: '#fcd34d', to: '#b45309', initial: 'Bu' },
+  angel: { from: '#e0f2fe', to: '#7dd3fc', initial: 'An' },
+  hochiminh: { from: '#d4d4d8', to: '#52525b', initial: 'HCM' },
 };
 
 const DISPLAY_NAME_TO_KEY: Record<string, string> = Object.fromEntries(
@@ -25,6 +27,7 @@ const DISPLAY_NAME_TO_KEY: Record<string, string> = Object.fromEntries(
 );
 
 DISPLAY_NAME_TO_KEY['senior dev'] = 'developer';
+DISPLAY_NAME_TO_KEY['ho chi minh'] = 'hochiminh';
 
 export function resolvePersonaKey(displayName: string): string {
   const normalized = displayName.trim().toLowerCase();

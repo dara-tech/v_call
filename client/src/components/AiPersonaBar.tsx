@@ -20,6 +20,8 @@ const PERSONA_ORDER: AIPersona[] = [
   'ganthy',
   'newtorn',
   'buddah',
+  'angel',
+  'hochiminh',
 ];
 
 const DISPLAY_LABELS: Partial<Record<AIPersona, string>> = {

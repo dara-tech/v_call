@@ -119,7 +119,7 @@ export const useWebRTC = (roomId: string, userName: string, userId: string, acti
   } = useLocalMedia({ localStreamRef, peersRef, hostedVirtualPeersRef });
 
   const {
-    chatMessages, setChatMessages, videoSyncState, setVideoSyncState,
+    chatMessages, setChatMessages, videoSyncState,
     setupDataChannel, sendChatMessage, broadcastVideoState
   } = useChatDataChannel({ userName, peersRef, hostedVirtualPeersRef, syncPeersState });
 
