@@ -8,7 +8,7 @@ interface AuthScreenProps {
   onLogin: (token: string, user: any) => void;
 }
 
-const API_URL = import.meta.env.VITE_SIGNALING_SERVER || "http://localhost:5002";
+import { SIGNALING_SERVER as API_URL } from '../lib/serverConfig';
 
 export function AuthScreen({ onLogin }: AuthScreenProps) {
   const [isLogin, setIsLogin] = useState(true);

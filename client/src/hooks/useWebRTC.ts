@@ -6,7 +6,7 @@ import { useLocalMedia } from './useLocalMedia';
 import { useChatDataChannel } from './useChatDataChannel';
 import { useAIParticipantManager } from './useAIParticipantManager';
 
-const SIGNALING_SERVER = import.meta.env.VITE_SIGNALING_SERVER || "http://localhost:5002";
+import { apiUrl, SIGNALING_SERVER } from '../lib/serverConfig';
 
 const ICE_SERVERS: RTCConfiguration = {
   iceServers: [
@@ -304,10 +304,16 @@ export const useWebRTC = (roomId: string, userName: string, userId: string, acti
   }, [roomId]);
 
   useEffect(() => {
-    fetch(`${SIGNALING_SERVER}/api/calls/turn-credentials`)
-      .then(res => res.json())
+    fetch(apiUrl('/api/calls/turn-credentials'))
+      .then(async (res) => {
+        if (!res.ok) {
+          console.warn(`TURN credentials unavailable (${res.status}); using default ICE servers`);
+          return null;
+        }
+        return res.json();
+      })
       .then(data => {
-        if (data.iceServers && Array.isArray(data.iceServers)) {
+        if (data?.iceServers && Array.isArray(data.iceServers)) {
           iceServersRef.current = {
             iceServers: [...(ICE_SERVERS.iceServers || []), ...data.iceServers],
             bundlePolicy: 'max-bundle',

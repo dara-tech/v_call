@@ -7,6 +7,7 @@ import { Button } from '@/components/ui/button';
 import { Input } from '@/components/ui/input';
 import { X, Search, RotateCcw, Loader2, Clock, PlayCircle, Link2, ChevronRight } from 'lucide-react';
 import type { VideoSyncState } from '../hooks/useWebRTC';
+import { apiUrl } from '../lib/serverConfig';
 
 interface WatchPartyPlayerProps {
   videoSyncState: VideoSyncState;
@@ -106,8 +107,7 @@ export const WatchPartyPlayer: React.FC<WatchPartyPlayerProps> = ({
     setIsSearching(true);
     setFilter('all');
     try {
-      const BASE = import.meta.env.VITE_SERVER_URL || "http://localhost:5002";
-      const res = await fetch(`${BASE}/api/search?q=${encodeURIComponent(queryToUse)}`);
+      const res = await fetch(apiUrl(`/api/search?q=${encodeURIComponent(queryToUse)}`));
       const data = await res.json();
       if (data.videos) setAllResults(data.videos);
       if (data.sources) setSources(data.sources);

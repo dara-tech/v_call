@@ -5,6 +5,7 @@ import { PERSONAS } from '../lib/ai/personas';
 import type { AIPersona } from '../lib/ai/types';
 import type { PeerState, PeerInfo } from './types';
 import { toast } from 'sonner';
+import { getAiProxyUrl } from '../lib/serverConfig';
 
 interface UseAIParticipantManagerProps {
   roomId: string;
@@ -110,7 +111,7 @@ export const useAIParticipantManager = ({
       ai.sendFunctionResponse(call, { status: 'success' });
     }) as EventListener);
 
-    await ai.connect("ws://localhost:5002/ai-proxy");
+    await ai.connect(getAiProxyUrl());
     
     if (localStreamRef.current) ai.addStream(localStreamRef.current);
     

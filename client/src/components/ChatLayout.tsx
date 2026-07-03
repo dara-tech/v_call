@@ -12,7 +12,7 @@ import { OutgoingCallOverlay } from './OutgoingCallOverlay';
 import { IncomingCallOverlay } from './IncomingCallOverlay';
 import { RoomDetailsPanel } from './RoomDetailsPanel';
 
-const API_URL = import.meta.env.VITE_SIGNALING_SERVER || "http://localhost:5002";
+import { SIGNALING_SERVER as API_URL } from '../lib/serverConfig';
 
 interface ChatLayoutProps {
   currentUser: any;
@@ -547,7 +547,7 @@ export const ChatLayout: React.FC<ChatLayoutProps> = ({ currentUser, token, onLo
               {activeTab === 'chats' ? 'Chats' : activeTab === 'members' ? 'Members' : 'Settings'}
             </div>
           </div>
-          <button className="absolute right-4 text-[#3390ec] hover:text-blue-400 transition-colors">
+          <button type="button" aria-label="New chat" className="absolute right-4 text-[#3390ec] hover:text-blue-400 transition-colors">
             <Edit className="w-[20px] h-[20px]" strokeWidth={1.5} />
           </button>
         </div>
@@ -566,6 +566,8 @@ export const ChatLayout: React.FC<ChatLayoutProps> = ({ currentUser, token, onLo
             />
             {isSearching && (
               <button 
+                type="button"
+                aria-label="Clear search"
                 onClick={() => {
                   setIsSearching(false);
                   setSearchQuery('');
@@ -672,6 +674,8 @@ export const ChatLayout: React.FC<ChatLayoutProps> = ({ currentUser, token, onLo
 
         <div className="h-[52px] border-t border-[#2a2a2a] shrink-0 bg-[#1c1c1c] flex items-center justify-around px-2">
           <button 
+            type="button"
+            aria-label="Members"
             onClick={() => {
               setActiveTab('members');
               setShowMobileSidebar(true);
@@ -680,16 +684,20 @@ export const ChatLayout: React.FC<ChatLayoutProps> = ({ currentUser, token, onLo
           >
             <UserCircle className="w-6 h-6" strokeWidth={activeTab === 'members' ? 2 : 1.5} />
           </button>
-          <button className="flex flex-col items-center justify-center text-[#777777] hover:text-white transition-colors w-12 h-12 outline-none">
+          <button type="button" aria-label="Calls" className="flex flex-col items-center justify-center text-[#777777] hover:text-white transition-colors w-12 h-12 outline-none">
             <Phone className="w-6 h-6" strokeWidth={1.5} />
           </button>
           <button
+            type="button"
+            aria-label="Chats"
             onClick={() => setActiveTab('chats')}
             className={`flex flex-col items-center justify-center w-12 h-12 transition-colors outline-none ${activeTab === 'chats' ? 'text-[#3390ec]' : 'text-[#777777] hover:text-white'}`}
           >
             <MessageSquare className="w-6 h-6" strokeWidth={activeTab === 'chats' ? 2 : 1.5} />
           </button>
           <button
+            type="button"
+            aria-label="Settings"
             onClick={() => setActiveTab('settings')}
             className={`flex flex-col items-center justify-center w-12 h-12 transition-colors outline-none ${activeTab === 'settings' ? 'text-[#3390ec]' : 'text-[#777777] hover:text-white'}`}
           >
@@ -718,6 +726,8 @@ export const ChatLayout: React.FC<ChatLayoutProps> = ({ currentUser, token, onLo
                     className="flex items-center gap-3 bg-[#1c1c1c]/90 backdrop-blur-md rounded-full pl-1.5 pr-5 py-1.5 pointer-events-auto shadow-[0_4px_20px_rgba(0,0,0,0.5)] cursor-pointer hover:bg-[#2c2c2c]/90 transition-colors"
                   >
                     <button 
+                      type="button"
+                      aria-label="Back to chat list"
                       onClick={(e) => {
                         e.stopPropagation();
                         setShowMobileSidebar(true);
@@ -740,6 +750,7 @@ export const ChatLayout: React.FC<ChatLayoutProps> = ({ currentUser, token, onLo
                   <div className="flex items-center bg-[#1c1c1c]/90 backdrop-blur-md rounded-full px-2 py-1 gap-1.5 pointer-events-auto shadow-[0_4px_20px_rgba(0,0,0,0.5)]">
                     <button 
                       type="button"
+                      aria-label={isInCall ? 'Leave call' : 'Start video call'}
                       onClick={isInCall ? handleLeaveCall : handleStartCall}
                       title={isInCall ? 'Leave Call' : 'Video Call'}
                       className={`w-[40px] h-[40px] shrink-0 rounded-full flex items-center justify-center p-0 transition-colors ${isInCall ? 'bg-red-500/20 text-red-500 hover:bg-red-500/30' : 'bg-transparent text-[#aaaaaa] hover:bg-[#2c2c2c] hover:text-white shadow-none'}`}
@@ -748,12 +759,14 @@ export const ChatLayout: React.FC<ChatLayoutProps> = ({ currentUser, token, onLo
                     </button>
                     <button 
                       type="button"
+                      aria-label="Search in chat"
                       className="w-[40px] h-[40px] shrink-0 rounded-full flex items-center justify-center p-0 transition-colors bg-transparent text-[#aaaaaa] hover:bg-[#2c2c2c] hover:text-white shadow-none"
                     >
                       <Search className="w-5 h-5" strokeWidth={1.5} />
                     </button>
                     <button 
                       type="button"
+                      aria-label="More options"
                       className="w-[40px] h-[40px] shrink-0 rounded-full flex items-center justify-center p-0 transition-colors bg-transparent text-[#aaaaaa] hover:bg-[#2c2c2c] hover:text-white shadow-none"
                     >
                       <MoreHorizontal className="w-5 h-5" strokeWidth={1.5} />
@@ -794,9 +807,9 @@ export const ChatLayout: React.FC<ChatLayoutProps> = ({ currentUser, token, onLo
                     {typingUsers.length > 0 && (
                       <div className="absolute -top-6 left-4 text-[12px] text-[#aaaaaa] flex items-center gap-2">
                         <div className="flex gap-1 items-center">
-                          <span className="w-1.5 h-1.5 bg-[#aaaaaa] rounded-full animate-bounce" style={{ animationDelay: '0ms' }} />
-                          <span className="w-1.5 h-1.5 bg-[#aaaaaa] rounded-full animate-bounce" style={{ animationDelay: '150ms' }} />
-                          <span className="w-1.5 h-1.5 bg-[#aaaaaa] rounded-full animate-bounce" style={{ animationDelay: '300ms' }} />
+                          <span className="w-1.5 h-1.5 bg-[#aaaaaa] rounded-full animate-bounce [animation-delay:0ms]" />
+                          <span className="w-1.5 h-1.5 bg-[#aaaaaa] rounded-full animate-bounce [animation-delay:150ms]" />
+                          <span className="w-1.5 h-1.5 bg-[#aaaaaa] rounded-full animate-bounce [animation-delay:300ms]" />
                         </div>
                         {typingUsers.join(', ')} {typingUsers.length === 1 ? 'is' : 'are'} typing...
                       </div>
@@ -804,6 +817,7 @@ export const ChatLayout: React.FC<ChatLayoutProps> = ({ currentUser, token, onLo
                     <form onSubmit={handleSendMessage} className="w-full flex items-center gap-2">
                       <button 
                         type="button"
+                        aria-label="Attach file"
                         className="w-[42px] h-[42px] rounded-full flex items-center justify-center shrink-0 text-[#aaaaaa] hover:text-white transition-colors p-0 shadow-[0_4px_20px_rgba(0,0,0,0.5)] bg-[#1c1c1c]/90 backdrop-blur-md hover:bg-[#2c2c2c]"
                       >
                         <Paperclip className="w-5 h-5" strokeWidth={1.5} />
@@ -817,7 +831,8 @@ export const ChatLayout: React.FC<ChatLayoutProps> = ({ currentUser, token, onLo
                           className="w-full h-[42px] bg-transparent border-0 rounded-full pl-4 pr-12 text-[15px] text-white focus-visible:ring-0 placeholder:text-[#777777] shadow-none"
                         />
                         <button 
-                          type="button" 
+                          type="button"
+                          aria-label="Insert emoji"
                           className="absolute right-3 top-1/2 -translate-y-1/2 text-[#777777] hover:text-[#aaaaaa] transition-colors"
                         >
                           <Smile className="w-6 h-6" strokeWidth={1.5} />
@@ -826,6 +841,7 @@ export const ChatLayout: React.FC<ChatLayoutProps> = ({ currentUser, token, onLo
 
                       <button 
                         type={newMessage.trim() ? "submit" : "button"}
+                        aria-label={newMessage.trim() ? 'Send message' : 'Record voice message'}
                         className={`w-[42px] h-[42px] rounded-full flex items-center justify-center shrink-0 transition-colors p-0 shadow-[0_4px_20px_rgba(0,0,0,0.5)] ${newMessage.trim() ? 'bg-[#3390ec] text-white hover:bg-[#2b7cb9]' : 'bg-[#1c1c1c]/90 backdrop-blur-md text-[#aaaaaa] hover:text-white hover:bg-[#2c2c2c]'}`}
                       >
                         {newMessage.trim() ? <Send className="w-5 h-5 ml-[-2px] mt-[1px]" strokeWidth={1.5} /> : <Mic className="w-5 h-5" strokeWidth={1.5} />}
@@ -871,7 +887,7 @@ export const ChatLayout: React.FC<ChatLayoutProps> = ({ currentUser, token, onLo
                       <div className="w-2 h-2 rounded-full bg-green-500 animate-pulse"></div>
                       Live Video Call
                     </span>
-                    <button onClick={() => setIsInCall(false)} className="text-[#aaaaaa] hover:text-white transition-colors">
+                    <button type="button" aria-label="Close video call" onClick={() => setIsInCall(false)} className="text-[#aaaaaa] hover:text-white transition-colors">
                       <X className="w-4 h-4" />
                     </button>
                   </div>

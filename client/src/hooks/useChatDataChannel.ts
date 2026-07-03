@@ -1,6 +1,7 @@
 import { useState, useCallback, type MutableRefObject } from 'react';
 import type { ChatMessage, VideoSyncState, PeerState, PeerInfo } from './types';
 import { AIParticipant } from '../lib/AIParticipant';
+import { apiUrl } from '../lib/serverConfig';
 
 interface UseChatDataChannelProps {
   userName: string;
@@ -64,7 +65,7 @@ export const useChatDataChannel = ({ userName, peersRef, hostedVirtualPeersRef, 
     } else {
       // AI not in call, fetch text reply
       try {
-        const res = await fetch(`http://localhost:5002/api/ai/chat`, {
+        const res = await fetch(apiUrl('/api/ai/chat'), {
           method: 'POST',
           headers: { 'Content-Type': 'application/json' },
           body: JSON.stringify({ message: text, userName })

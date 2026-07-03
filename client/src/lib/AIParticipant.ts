@@ -1,6 +1,7 @@
 import type { AIState, AIPersona } from './ai/types';
 import { PERSONAS } from './ai/personas';
 import { downsampleBuffer, floatTo16BitPCM, arrayBufferToBase64 } from './ai/audioUtils';
+import { getAiProxyUrl } from './serverConfig';
 
 export class AIParticipant extends EventTarget {
   private ws: WebSocket | null = null;
@@ -27,7 +28,7 @@ export class AIParticipant extends EventTarget {
   private lastVideoFrameTime: Map<string, number> = new Map();
   
   // Reconnection and Session state
-  private proxyUrl: string = "ws://localhost:5002/ai-proxy";
+  private proxyUrl: string = getAiProxyUrl();
 
   private sessionHandle: string | null = null;
   private reconnectAttempts: number = 0;
@@ -127,8 +128,8 @@ export class AIParticipant extends EventTarget {
     return this.currentState;
   }
 
-  public async connect(proxyUrl: string = "ws://localhost:5002/ai-proxy") {
-    this.proxyUrl = proxyUrl;
+  public async connect(proxyUrl?: string) {
+    this.proxyUrl = proxyUrl ?? getAiProxyUrl();
     this.isIntentionalDisconnect = false;
     this.reconnectAttempts = 0;
     
