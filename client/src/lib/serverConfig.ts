@@ -1,4 +1,4 @@
-const DEFAULT_SERVER = 'http://localhost:5002';
+const DEFAULT_SERVER = 'http://localhost:5003';
 
 /** HTTP base URL for v_call signaling + REST APIs (set via VITE_SIGNALING_SERVER in production). */
 export const SIGNALING_SERVER = (

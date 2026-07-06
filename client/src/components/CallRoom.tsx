@@ -15,6 +15,8 @@ import { AiPersonaBar } from './AiPersonaBar';
 import { WaitingRoomHero } from './WaitingRoomHero';
 import { PERSONAS } from '../lib/ai/personas';
 import type { AIPersona } from '../lib/ai/types';
+import { useLiveTranslate } from '../hooks/useLiveTranslate';
+import { LiveTranslatePanel } from './LiveTranslatePanel';
 
 interface CallRoomProps {
   roomId: string;
@@ -28,7 +30,7 @@ interface CallRoomProps {
 }
 
 // Sub-component for remote peer video to handle its own stream binding
-const RemotePeerVideo: React.FC<{ peer: PeerState }> = ({ peer }) => {
+const RemotePeerVideo: React.FC<{ peer: PeerState; muteForTranslate?: boolean }> = ({ peer, muteForTranslate }) => {
   const videoRef = useRef<HTMLVideoElement>(null);
   const [isActiveSpeaker, setIsActiveSpeaker] = useState(false);
   
@@ -75,7 +77,7 @@ const RemotePeerVideo: React.FC<{ peer: PeerState }> = ({ peer }) => {
           ref={videoRef}
           autoPlay
           playsInline
-          muted={isAI}
+          muted={isAI || muteForTranslate}
           className={`w-full h-full object-cover ${(!hasVideo && isAI) ? 'hidden' : ''}`}
         />
       )}
@@ -142,6 +144,19 @@ export const CallRoom: React.FC<CallRoomProps> = ({
     summonAI,
     removeAI,
   } = useWebRTC(roomId, userName, userId, activeCall);
+
+  const {
+    isTranslateActive,
+    translateTargetLanguage,
+    translateState,
+    translateInputLanguageCode,
+    translateInputLiveText,
+    translateOutputLiveText,
+    translateInputHistory,
+    translateOutputHistory,
+    startLiveTranslate,
+    stopLiveTranslate,
+  } = useLiveTranslate(peers, localStream);
 
   // UI state toggles
   const [showWatchParty, setShowWatchParty] = useState(false);
@@ -301,7 +316,19 @@ export const CallRoom: React.FC<CallRoomProps> = ({
           </div>
         )}
 
-        {/* Participants / waiting room — sidebar on desktop, hidden on mobile during watch party */}
+        {isTranslateActive && !showWatchParty ? (
+          <div className="flex min-h-0 min-w-0 flex-1 flex-col">
+            <LiveTranslatePanel
+              inputLanguageCode={translateInputLanguageCode}
+              targetLanguageCode={translateTargetLanguage}
+              inputLiveText={translateInputLiveText}
+              outputLiveText={translateOutputLiveText}
+              inputHistory={translateInputHistory}
+              outputHistory={translateOutputHistory}
+              translateState={translateState}
+            />
+          </div>
+        ) : (
         <div
           className={`relative min-h-0 bg-[#0a0a0a] ${
             showWatchParty
@@ -327,7 +354,7 @@ export const CallRoom: React.FC<CallRoomProps> = ({
                         : 'min-h-[180px] w-full sm:min-h-0'
                     }
                   >
-                    <RemotePeerVideo peer={peer} />
+                    <RemotePeerVideo peer={peer} muteForTranslate={isTranslateActive && peer.aiState === undefined} />
                   </div>
                 ))}
               </div>
@@ -343,8 +370,8 @@ export const CallRoom: React.FC<CallRoomProps> = ({
           {/* Local PIP — hide on mobile during watch party */}
           <div
             className={`absolute right-3 top-3 z-30 aspect-video w-20 overflow-hidden rounded-xl bg-zinc-950 shadow-lg ring-1 ring-white/15 sm:right-4 sm:top-4 sm:w-28 sm:rounded-2xl md:w-32 ${
-              showWatchParty ? 'hidden sm:block' : ''
-            }`}
+              showWatchParty || isTranslateActive ? 'hidden sm:block' : ''
+            } ${isTranslateActive ? 'hidden' : ''}`}
           >
             {localStream && !isCameraOff ? (
               <video
@@ -375,6 +402,7 @@ export const CallRoom: React.FC<CallRoomProps> = ({
             )}
           </div>
         </div>
+        )}
 
         {/* Chat panel — full-screen overlay on mobile */}
         {showStats && (
@@ -399,6 +427,11 @@ export const CallRoom: React.FC<CallRoomProps> = ({
             isScreenSharing={isScreenSharing}
             showStats={showStats}
             showWatchParty={showWatchParty}
+            isTranslateActive={isTranslateActive}
+            translateTargetLanguage={translateTargetLanguage}
+            translateState={translateState}
+            onStartLiveTranslate={startLiveTranslate}
+            onStopLiveTranslate={stopLiveTranslate}
             onToggleMute={toggleMute}
             onToggleCamera={toggleCamera}
             onToggleScreenShare={toggleScreenShare}

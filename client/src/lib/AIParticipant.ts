@@ -1,5 +1,6 @@
 import type { AIState, AIPersona } from './ai/types';
 import { PERSONAS } from './ai/personas';
+import { buildLiveSetupPayload } from './ai/liveConfig';
 import { downsampleBuffer, floatTo16BitPCM, arrayBufferToBase64 } from './ai/audioUtils';
 import { getAiProxyUrl } from './serverConfig';
 
@@ -9,6 +10,8 @@ export class AIParticipant extends EventTarget {
   private mixerNode: GainNode;
   private processorNode: ScriptProcessorNode;
   private destinationNode: MediaStreamAudioDestinationNode;
+  private outputCompressor: DynamicsCompressorNode;
+  private outputGain: GainNode;
   private streams: Set<MediaStream> = new Set();
   private sources: Map<string, MediaStreamAudioSourceNode> = new Map();
   public aiStream: MediaStream;
@@ -21,7 +24,7 @@ export class AIParticipant extends EventTarget {
 
   // Audio playback state
   private nextPlayTime: number = 0;
-  private readonly JITTER_BUFFER_MS = 150;
+  private readonly JITTER_BUFFER_MS = 90;
   private activeSources: AudioBufferSourceNode[] = [];
   private isPlayingAudio: boolean = false;
   private lastInterruptTime: number = 0;
@@ -54,6 +57,17 @@ export class AIParticipant extends EventTarget {
     this.audioContext = new AudioContextClass({ sampleRate: 24000 }); // Output from Gemini is 24kHz
     this.mixerNode = this.audioContext.createGain();
     this.destinationNode = this.audioContext.createMediaStreamDestination();
+    this.outputCompressor = this.audioContext.createDynamicsCompressor();
+    this.outputCompressor.threshold.value = -22;
+    this.outputCompressor.knee.value = 18;
+    this.outputCompressor.ratio.value = 2.5;
+    this.outputCompressor.attack.value = 0.005;
+    this.outputCompressor.release.value = 0.12;
+    this.outputGain = this.audioContext.createGain();
+    this.outputGain.gain.value = 1.15;
+    this.outputCompressor.connect(this.outputGain);
+    this.outputGain.connect(this.destinationNode);
+    this.outputGain.connect(this.audioContext.destination);
     this.aiStream = this.destinationNode.stream;
 
     // Set up canvas for video frame extraction
@@ -150,107 +164,7 @@ export class AIParticipant extends EventTarget {
       this.reconnectAttempts = 0;
       
       const personaConfig = PERSONAS[this.personaId];
-      
-      const setupPayload: any = {
-  model: 'models/gemini-3.1-flash-live-preview',
-  tools: [{
-    functionDeclarations: [
-      {
-        name: 'changeTheme',
-        description: 'Changes the app theme to light or dark. Use this when the user asks to change the theme or colors.',
-        parameters: {
-          type: 'OBJECT',
-          properties: {
-            theme: { type: 'STRING', enum: ['light', 'dark'] }
-          },
-          required: ['theme']
-        }
-      },
-      {
-        name: 'shareScreen',
-        description: "Starts sharing the user's screen. Use this when the user asks you to share their screen or start screen sharing."
-      },
-      {
-        name: 'raiseHand',
-        description: 'Toggles your raised hand in the call. Use this when the user asks you to raise your hand or you want to ask a question.',
-        parameters: {
-          type: 'OBJECT',
-          properties: {
-            raised: { type: 'BOOLEAN' }
-          },
-          required: ['raised']
-        }
-      },
-      {
-        name: 'react',
-        description: 'Sends an emoji reaction to the room. Use this when someone says something funny, sad, or exciting.',
-        parameters: {
-          type: 'OBJECT',
-          properties: {
-            emoji: { type: 'STRING', description: 'A single emoji character (e.g. 👍, ❤️, 😂)' }
-          },
-          required: ['emoji']
-        }
-      },
-      {
-        name: 'openBrowserUrl',
-        description: 'Opens a hidden web browser to search for information or visit a website. The screen will be streamed back to you.',
-        parameters: {
-          type: 'OBJECT',
-          properties: {
-            url: { type: 'STRING', description: 'The full URL to navigate to (e.g. https://www.google.com/search?q=weather)' }
-          },
-          required: ['url']
-        }
-      },
-      {
-        name: 'clickScreen',
-        description: 'Clicks on the web browser screen at the specified coordinates (X, Y). Use this to click links or buttons you see on the screen.',
-        parameters: {
-          type: 'OBJECT',
-          properties: {
-            x: { type: 'NUMBER', description: 'The X coordinate' },
-            y: { type: 'NUMBER', description: 'The Y coordinate' }
-          },
-          required: ['x', 'y']
-        }
-      },
-      {
-        name: 'scrollScreen',
-        description: 'Scrolls the web browser screen up or down.',
-        parameters: {
-          type: 'OBJECT',
-          properties: {
-            deltaY: { type: 'NUMBER', description: 'Positive to scroll down, negative to scroll up (e.g. 500 or -500)' }
-          },
-          required: ['deltaY']
-        }
-      }
-    ]
-  }],
-  systemInstruction: {
-    parts: [{
-      text: personaConfig.prompt
-    }]
-  },
-  generationConfig: {
-    responseModalities: ["AUDIO"],
-    speechConfig: {
-      voiceConfig: {
-        prebuiltVoiceConfig: {
-          voiceName: personaConfig.voice
-        }
-      }
-    }
-  }
-};
-
-      // If resuming, send the session handle
-      if (this.sessionHandle) {
-        setupPayload.sessionResumption = {
-          handle: this.sessionHandle
-        };
-      }
+      const setupPayload = buildLiveSetupPayload(this.personaId, this.sessionHandle);
 
       this.ws?.send(JSON.stringify({ setup: setupPayload }));
 
@@ -523,8 +437,7 @@ export class AIParticipant extends EventTarget {
     
     const source = this.audioContext.createBufferSource();
     source.buffer = audioBuffer;
-    source.connect(this.destinationNode);
-    source.connect(this.audioContext.destination); // Play directly to local hardware speakers
+    source.connect(this.outputCompressor);
     
     const currentTime = this.audioContext.currentTime;
     

@@ -20,4 +20,9 @@ jobs:
             cd /root/v_call
             git pull origin main
             npm install
-            pm2 restart v_call-server
+            npm run build --workspace=client
+            cd /root/v_server
+            npm install
+            pm2 delete v_call-server 2>/dev/null || true
+            SERVE_CLIENT_DIST=/root/v_call/client/dist PORT=5001 pm2 restart v-server --update-env || \
+              SERVE_CLIENT_DIST=/root/v_call/client/dist PORT=5001 pm2 start src/index.js --name v-server

@@ -166,7 +166,7 @@ export const SettingsPage: React.FC<SettingsPageProps> = ({ currentUser,  onLogo
         <div className="flex-1 bg-[#0f0f0f] flex flex-col overflow-y-auto">
           {/* Top bar */}
           <div className="h-[60px] flex items-center justify-between px-5 border-b border-[#2a2a2a] shrink-0">
-            <button
+            <button type="button" title="Back"
               onClick={() => setActiveSection(null)}
               className="lg:hidden flex items-center gap-1 text-[#3390ec] hover:text-blue-400 transition-colors"
             >

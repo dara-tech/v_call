@@ -419,6 +419,12 @@ export const useWebRTC = (roomId: string, userName: string, userId: string, acti
       }
     });
 
+    socket.on('user-joined', (user: PeerInfo) => {
+      if (user.socketId && user.socketId !== socket.id) {
+        initiateCall(user);
+      }
+    });
+
     socket.on('toggle-hand', ({ socketId, handRaised }) => {
       const peer = peersRef.current[socketId];
       if (peer) {
