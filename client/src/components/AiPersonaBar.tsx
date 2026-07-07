@@ -1,9 +1,8 @@
 import React from 'react';
-import { Info, X } from 'lucide-react';
+import { Settings, X } from 'lucide-react';
 import type { AIPersona } from '../lib/ai/types';
 import { PERSONAS } from '../lib/ai/personas';
 import { getPersonaAvatarUrlFromKey } from '../lib/ai/avatarStyles';
-import { GEMINI_LIVE_TRANSLATE_DOCS_URL } from '../lib/ai/liveConfig';
 import { playFutureClick } from '../lib/ui/futureClickSound';
 import { Tooltip, TooltipContent, TooltipProvider, TooltipTrigger } from './ui/tooltip';
 
@@ -32,6 +31,8 @@ const PERSONA_ORDER: AIPersona[] = [
   'buddah',
   'angel',
   'hochiminh',
+  'hivsop',
+  'polpot',
 ];
 
 const DISPLAY_LABELS: Partial<Record<AIPersona, string>> = {
@@ -39,6 +40,8 @@ const DISPLAY_LABELS: Partial<Record<AIPersona, string>> = {
   madai: 'Mad AI',
   fifa2026: 'FIFA 2026',
   footballlegend: 'កំពូលបាល់',
+  hivsop: 'HIV SOP',
+  polpot: 'Pol Pot',
 };
 
 interface AiPersonaBarProps {
@@ -46,6 +49,7 @@ interface AiPersonaBarProps {
   onSummon: (persona: AIPersona) => void;
   onRemove: (socketId: string) => void;
   className?: string;
+  onOpenSettings?: () => void;
 }
 
 export const AiPersonaBar: React.FC<AiPersonaBarProps> = ({
@@ -53,6 +57,7 @@ export const AiPersonaBar: React.FC<AiPersonaBarProps> = ({
   onSummon,
   onRemove,
   className = '',
+  onOpenSettings,
 }) => {
   return (
     <TooltipProvider delayDuration={200}>
@@ -103,31 +108,27 @@ export const AiPersonaBar: React.FC<AiPersonaBarProps> = ({
 
           <Tooltip>
             <TooltipTrigger asChild>
-              <a
-                href={GEMINI_LIVE_TRANSLATE_DOCS_URL}
-                target="_blank"
-                rel="noopener noreferrer"
-                aria-label="Gemini Live Translate documentation"
-                className="flex size-8 shrink-0 items-center justify-center rounded-full text-zinc-400 transition-all hover:bg-white/10 hover:text-cyan-300 hover:shadow-[0_0_10px_rgba(34,211,238,0.4)] active:scale-90"
+              <button
+                type="button"
+                aria-label="Call Settings"
+                className="flex size-8 shrink-0 items-center justify-center rounded-full text-zinc-400 transition-all hover:bg-white/10 hover:text-cyan-300 hover:shadow-[0_0_10px_rgba(34,211,238,0.4)] active:scale-90 cursor-pointer"
                 onClick={(e) => {
                   e.stopPropagation();
                   playFutureClick('info');
+                  onOpenSettings?.();
                 }}
               >
-                <Info className="size-4" />
-              </a>
+                <Settings className="size-4" />
+              </button>
             </TooltipTrigger>
             <TooltipContent
               side="bottom"
               className="max-w-xs border-white/10 bg-zinc-950 text-white text-xs sm:max-w-sm"
             >
-              <p className="font-semibold text-cyan-300">Gemini Live</p>
+              <p className="font-semibold text-cyan-300">Call Settings</p>
               <p className="mt-1 text-zinc-300">
-                AI personas use <span className="text-white">Live Agent</span> mode.
-                For real-time voice translation, use the{' '}
-                <span className="text-white">Languages</span> button in the call toolbar.
+                Configure your camera, microphone, and audio device preferences.
               </p>
-              <p className="mt-2 text-cyan-400/90">Click icon for Google docs →</p>
             </TooltipContent>
           </Tooltip>
         </div>

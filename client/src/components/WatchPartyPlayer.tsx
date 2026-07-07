@@ -8,11 +8,18 @@ import { Input } from '@/components/ui/input';
 import { X, Search, RotateCcw, Loader2, Clock, PlayCircle, Link2, ChevronRight } from 'lucide-react';
 import type { VideoSyncState } from '../hooks/useWebRTC';
 import { apiUrl } from '../lib/serverConfig';
+import { Dialog, DialogContent, DialogHeader, DialogTitle, DialogDescription } from '@/components/ui/dialog';
+import { LIVE_TRANSLATE_LANGUAGES } from '../lib/ai/liveConfig';
+import { getSharedAudioContext } from '../lib/sharedAudioContext';
 
 interface WatchPartyPlayerProps {
   videoSyncState: VideoSyncState;
   broadcastVideoState: (state: VideoSyncState) => void;
   onClose: () => void;
+  onAudioStreamChange?: (stream: MediaStream | null) => void;
+  onStartTranslate?: (langCode: string) => void;
+  onStopTranslate?: () => void;
+  isTranslateActive?: boolean;
 }
 
 interface VideoResult {
@@ -44,7 +51,13 @@ export const WatchPartyPlayer: React.FC<WatchPartyPlayerProps> = ({
   videoSyncState,
   broadcastVideoState,
   onClose,
+  onAudioStreamChange,
+  onStartTranslate,
+  onStopTranslate,
+  isTranslateActive,
 }) => {
+  const [selectedVideoForModal, setSelectedVideoForModal] = useState<VideoResult | null>(null);
+  const [dubLanguage, setDubLanguage] = useState('km');
   const playerRef = useRef<any>(null);
   const [searchQuery, setSearchQuery] = useState('');
   const [allResults, setAllResults] = useState<VideoResult[]>([]);
@@ -61,15 +74,104 @@ export const WatchPartyPlayer: React.FC<WatchPartyPlayerProps> = ({
   const debounceRef = useRef<ReturnType<typeof setTimeout> | null>(null);
   const lastPlayedRef = useRef(0);
 
+  const audioRef = useRef<HTMLAudioElement>(null);
+  const audioContextRef = useRef<AudioContext | null>(null);
+  const audioSourceNodeRef = useRef<MediaElementAudioSourceNode | null>(null);
+  const localVolumeNodeRef = useRef<GainNode | null>(null);
+
+  const isYoutube = Boolean(
+    videoSyncState.url &&
+      (videoSyncState.url.includes('youtube.com') || videoSyncState.url.includes('youtu.be'))
+  );
+
+  const proxyAudioUrl = isYoutube
+    ? apiUrl(`/api/calls/youtube-audio?url=${encodeURIComponent(videoSyncState.url!)}`)
+    : '';
+
+  // Handle source changes on the audio element without unmounting it
+  useEffect(() => {
+    const audioEl = audioRef.current;
+    if (!audioEl) return;
+    if (isYoutube && proxyAudioUrl) {
+      audioEl.src = proxyAudioUrl;
+      audioEl.load();
+    } else {
+      audioEl.src = '';
+    }
+  }, [proxyAudioUrl, isYoutube]);
+
+  // Set up Web Audio API capture on the persistent audio element
+  useEffect(() => {
+    const audioEl = audioRef.current;
+    if (!audioEl) {
+      onAudioStreamChange?.(null);
+      return;
+    }
+
+    let ctx = audioContextRef.current;
+    if (!ctx) {
+      ctx = getSharedAudioContext();
+      audioContextRef.current = ctx;
+    }
+
+    if (ctx.state === 'suspended') {
+      ctx.resume().catch(() => {});
+    }
+
+    let source = audioSourceNodeRef.current;
+    if (!source) {
+      try {
+        source = ctx.createMediaElementSource(audioEl);
+        audioSourceNodeRef.current = source;
+      } catch (err) {
+        console.warn('[WatchPartyPlayer] createMediaElementSource error:', err);
+      }
+    }
+
+    if (source) {
+      const destination = ctx.createMediaStreamDestination();
+      source.connect(destination);
+
+      // Create a gain node for local speaker output to support background audio ducking
+      const volumeNode = ctx.createGain();
+      volumeNode.gain.value = isTranslateActive ? 0.0 : 1.0;
+      source.connect(volumeNode);
+      volumeNode.connect(ctx.destination);
+      localVolumeNodeRef.current = volumeNode;
+
+      const stream = destination.stream;
+      onAudioStreamChange?.(stream);
+
+      return () => {
+        try {
+          source.disconnect(destination);
+          source.disconnect(volumeNode);
+          volumeNode.disconnect(ctx!.destination);
+        } catch (e) {}
+        localVolumeNodeRef.current = null;
+        onAudioStreamChange?.(null);
+      };
+    }
+  }, [onAudioStreamChange, isTranslateActive]);
+
+  // Dynamically duck original audio when live translate is active
+  useEffect(() => {
+    if (localVolumeNodeRef.current) {
+      localVolumeNodeRef.current.gain.value = isTranslateActive ? 0.0 : 1.0;
+    }
+  }, [isTranslateActive]);
+
   useEffect(() => {
     setIsPlaying(videoSyncState.playing);
+    const audioEl = audioRef.current;
+
+    const expectedTime = videoSyncState.playing
+      ? videoSyncState.playedSeconds + (Date.now() - videoSyncState.timestamp) / 1000
+      : videoSyncState.playedSeconds;
+
     if (playerRef.current && !seekingRef.current) {
       const cur = typeof playerRef.current.getCurrentTime === 'function'
         ? playerRef.current.getCurrentTime() : 0;
-        
-      const expectedTime = videoSyncState.playing 
-        ? videoSyncState.playedSeconds + (Date.now() - videoSyncState.timestamp) / 1000 
-        : videoSyncState.playedSeconds;
 
       if (Math.abs(cur - expectedTime) > 2) {
         if (typeof playerRef.current.seekTo === 'function') {
@@ -78,7 +180,18 @@ export const WatchPartyPlayer: React.FC<WatchPartyPlayerProps> = ({
         }
       }
     }
-  }, [videoSyncState]);
+
+    if (audioEl) {
+      if (videoSyncState.playing) {
+        audioEl.play().catch(() => {});
+      } else {
+        audioEl.pause();
+      }
+      if (Math.abs(audioEl.currentTime - expectedTime) > 2) {
+        audioEl.currentTime = expectedTime;
+      }
+    }
+  }, [videoSyncState, isYoutube]);
 
   useEffect(() => {
     if (videoSyncState.url) setShowSearch(false);
@@ -136,10 +249,21 @@ export const WatchPartyPlayer: React.FC<WatchPartyPlayerProps> = ({
   };
 
   const handleSelectVideo = (video: VideoResult) => {
+    setSelectedVideoForModal(video);
+  };
+
+  const handlePlayWithTranslation = (video: VideoResult, langCode: string | null) => {
     broadcastVideoState({ url: video.url, playing: true, playedSeconds: 0, timestamp: Date.now() });
     setShowSearch(false);
     setSearchQuery('');
     setAllResults([]);
+    setSelectedVideoForModal(null);
+
+    if (langCode) {
+      onStartTranslate?.(langCode);
+    } else {
+      onStopTranslate?.();
+    }
   };
 
   const handleUrlSubmit = (e: React.FormEvent) => {
@@ -323,7 +447,7 @@ export const WatchPartyPlayer: React.FC<WatchPartyPlayerProps> = ({
               {filteredResults.map((video) => {
                 const meta = SOURCE_META[video.source];
                 return (
-                  <Button key={`${video.source}-${video.id}`}
+                  <button key={`${video.source}-${video.id}`}
                     onClick={() => handleSelectVideo(video)}
                     onMouseEnter={() => setHoveredId(`${video.source}-${video.id}`)}
                     onMouseLeave={() => setHoveredId(null)}
@@ -357,7 +481,7 @@ export const WatchPartyPlayer: React.FC<WatchPartyPlayerProps> = ({
                         <p className="text-[11px] font-medium text-zinc-400 truncate">{video.author}</p>
                       </div>
                     </div>
-                  </Button>
+                  </button>
                 );
               })}
             </div>
@@ -405,6 +529,7 @@ export const WatchPartyPlayer: React.FC<WatchPartyPlayerProps> = ({
                 url={videoSyncState.url!}
                 playing={isPlaying}
                 controls={true}
+                muted={isYoutube}
                 width="100%"
                 height="100%"
                 onPlay={handlePlay}
@@ -421,6 +546,11 @@ export const WatchPartyPlayer: React.FC<WatchPartyPlayerProps> = ({
                 }}
               />
             )}
+            <audio
+              ref={audioRef}
+              crossOrigin="anonymous"
+              style={{ display: 'none' }}
+            />
           </div>
         )}
 
@@ -434,6 +564,69 @@ export const WatchPartyPlayer: React.FC<WatchPartyPlayerProps> = ({
           </div>
         )}
       </div>
+
+      {/* Watch Options (Dubbed Translate) Modal */}
+      <Dialog open={!!selectedVideoForModal} onOpenChange={(open) => !open && setSelectedVideoForModal(null)}>
+        <DialogContent className="bg-zinc-950 border border-zinc-800 text-zinc-200 sm:max-w-md rounded-2xl shadow-2xl p-6">
+          <DialogHeader className="space-y-1">
+            <DialogTitle className="text-sm font-bold uppercase tracking-wider text-brand-cyan">Watch Options</DialogTitle>
+            <DialogDescription className="text-xs text-zinc-500">Choose how you want to play this video.</DialogDescription>
+          </DialogHeader>
+          
+          {selectedVideoForModal && (
+            <div className="flex flex-col gap-5 mt-2">
+              <div className="flex gap-3 bg-zinc-900/60 p-3 rounded-xl border border-white/5">
+                <img src={selectedVideoForModal.thumbnail} className="w-24 aspect-video object-cover rounded-lg shrink-0 border border-white/5" />
+                <div className="flex-1 min-w-0 flex flex-col justify-center">
+                  <h4 className="text-[13px] font-semibold text-zinc-200 line-clamp-2 leading-tight mb-1">{selectedVideoForModal.title}</h4>
+                  <p className="text-[11px] font-medium text-zinc-500 truncate">{selectedVideoForModal.author}</p>
+                </div>
+              </div>
+
+              <div className="flex flex-col gap-3">
+                {/* Play Original */}
+                <button
+                  onClick={() => handlePlayWithTranslation(selectedVideoForModal, null)}
+                  className="w-full h-11 bg-zinc-900 border border-zinc-800 hover:bg-zinc-800 text-zinc-200 font-semibold text-xs rounded-xl flex items-center justify-center gap-2 cursor-pointer transition-colors active:scale-95"
+                >
+                  Play Original (No Translation)
+                </button>
+
+                <div className="flex items-center my-1">
+                  <div className="flex-1 h-px bg-zinc-900" />
+                  <span className="px-3 text-[10px] font-bold uppercase tracking-widest text-zinc-600">Or</span>
+                  <div className="flex-1 h-px bg-zinc-900" />
+                </div>
+
+                {/* Play Dubbed */}
+                <div className="space-y-2 text-left">
+                  <label className="text-[10px] font-bold uppercase tracking-widest text-zinc-500 block">Live Translate Language (Dubbed)</label>
+                  <div className="flex gap-2">
+                    <select
+                      value={dubLanguage}
+                      onChange={(e) => setDubLanguage(e.target.value)}
+                      className="flex-1 bg-zinc-900 border border-zinc-800 hover:border-zinc-700 rounded-xl px-3 h-11 text-xs text-zinc-200 focus:outline-none focus:border-brand-cyan/50 focus:ring-1 focus:ring-brand-cyan/35 cursor-pointer transition-colors"
+                    >
+                      {LIVE_TRANSLATE_LANGUAGES.map((lang) => (
+                        <option key={lang.code} value={lang.code}>
+                          {lang.label}
+                        </option>
+                      ))}
+                    </select>
+                    
+                    <button
+                      onClick={() => handlePlayWithTranslation(selectedVideoForModal, dubLanguage)}
+                      className="h-11 px-4 bg-brand-cyan hover:bg-brand-cyan/85 text-zinc-950 font-bold text-xs rounded-xl flex items-center justify-center gap-1.5 shrink-0 cursor-pointer transition-all active:scale-95 shadow-[0_0_15px_rgba(34,211,238,0.2)]"
+                    >
+                      Play Dubbed
+                    </button>
+                  </div>
+                </div>
+              </div>
+            </div>
+          )}
+        </DialogContent>
+      </Dialog>
     </div>
   );
 };

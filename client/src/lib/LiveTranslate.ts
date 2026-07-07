@@ -1,6 +1,7 @@
 import { buildLiveTranslateSetupPayload } from './ai/liveConfig';
 import { downsampleBuffer, floatTo16BitPCM, arrayBufferToBase64 } from './ai/audioUtils';
 import { getAiProxyUrl } from './serverConfig';
+import { getSharedAudioContext } from './sharedAudioContext';
 
 export type TranslateState = 'disconnected' | 'connecting' | 'connected' | 'reconnecting';
 
@@ -26,6 +27,7 @@ export class LiveTranslate extends EventTarget {
   private readonly maxReconnectAttempts = 5;
   private isIntentionalDisconnect = false;
   private currentState: TranslateState = 'disconnected';
+  private currentTurnText = '';
   private setupComplete = false;
   private connectResolve: (() => void) | null = null;
   private connectReject: ((err: Error) => void) | null = null;
@@ -36,8 +38,7 @@ export class LiveTranslate extends EventTarget {
   constructor(targetLanguageCode: string) {
     super();
     this.targetLanguageCode = targetLanguageCode;
-    const AudioContextClass = window.AudioContext || (window as typeof window & { webkitAudioContext: typeof AudioContext }).webkitAudioContext;
-    this.audioContext = new AudioContextClass({ sampleRate: 24000 });
+    this.audioContext = getSharedAudioContext();
     this.mixerNode = this.audioContext.createGain();
     this.outputGain = this.audioContext.createGain();
     this.outputGain.gain.value = 1.1;
@@ -177,12 +178,19 @@ export class LiveTranslate extends EventTarget {
           }));
         }
         if (msg.serverContent?.outputTranscription?.text) {
+          this.currentTurnText = msg.serverContent.outputTranscription.text;
           this.dispatchEvent(new CustomEvent('outputtranscript', {
             detail: {
-              text: msg.serverContent.outputTranscription.text,
+              text: this.currentTurnText,
               languageCode: msg.serverContent.outputTranscription.languageCode,
             },
           }));
+        }
+        if (msg.serverContent?.turnComplete) {
+          if (['km', 'th', 'vi'].includes(this.targetLanguageCode) && this.currentTurnText) {
+            this.speakText(this.currentTurnText);
+          }
+          this.currentTurnText = '';
         }
 
         const parts = msg.serverContent?.modelTurn?.parts;
@@ -278,6 +286,9 @@ export class LiveTranslate extends EventTarget {
     }
     this.connectResolve = null;
     this.connectReject = null;
+    if (window.speechSynthesis) {
+      window.speechSynthesis.cancel();
+    }
     this.ws?.close();
     this.ws = null;
     this.activeSources.forEach((s) => {
@@ -297,6 +308,7 @@ export class LiveTranslate extends EventTarget {
         el.remove();
       });
       this.audioElements.clear();
+      this.currentTurnText = '';
     } catch { /* noop */ }
     this.setState('disconnected');
   }
@@ -331,5 +343,36 @@ export class LiveTranslate extends EventTarget {
       this.activeSources = this.activeSources.filter((s) => s !== source);
     };
     this.nextPlayTime += audioBuffer.duration;
+  }
+
+  private speakText(text: string) {
+    if (!window.speechSynthesis) return;
+
+    window.speechSynthesis.cancel();
+
+    const utterance = new SpeechSynthesisUtterance(text);
+    
+    if (this.targetLanguageCode === 'km') {
+      utterance.lang = 'km-KH';
+    } else if (this.targetLanguageCode === 'th') {
+      utterance.lang = 'th-TH';
+    } else if (this.targetLanguageCode === 'vi') {
+      utterance.lang = 'vi-VN';
+    } else {
+      utterance.lang = this.targetLanguageCode;
+    }
+
+    utterance.rate = 0.95;
+    utterance.pitch = 1.0;
+
+    const voices = window.speechSynthesis.getVoices();
+    const matchingVoice = voices.find(v => 
+      v.lang.toLowerCase().replace('_', '-').startsWith(this.targetLanguageCode.toLowerCase())
+    );
+    if (matchingVoice) {
+      utterance.voice = matchingVoice;
+    }
+
+    window.speechSynthesis.speak(utterance);
   }
 }

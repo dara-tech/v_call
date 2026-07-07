@@ -20,6 +20,7 @@ interface UseAIParticipantManagerProps {
   localStreamRef: MutableRefObject<MediaStream | null>;
   syncPeersState: () => void;
   toggleScreenShare: () => void;
+  watchPartyStream?: MediaStream | null;
 }
 
 export const useAIParticipantManager = ({
@@ -29,7 +30,8 @@ export const useAIParticipantManager = ({
   hostedVirtualPeersRef,
   localStreamRef,
   syncPeersState,
-  toggleScreenShare
+  toggleScreenShare,
+  watchPartyStream
 }: UseAIParticipantManagerProps) => {
 
   const summonAI = useCallback(async (persona: AIPersona = 'lily') => {
@@ -114,6 +116,7 @@ export const useAIParticipantManager = ({
     await ai.connect(getAiProxyUrl());
     
     if (localStreamRef.current) ai.addStream(localStreamRef.current);
+    if (watchPartyStream) ai.addStream(watchPartyStream);
     
     // Feed existing remote peers and OTHER existing AIs to the new AI
     Object.values(peersRef.current).forEach(peer => {
@@ -135,7 +138,7 @@ export const useAIParticipantManager = ({
     socketRef.current?.emit('add-virtual-user', { roomId, virtualId, userName: personaConfig.name });
     
     // We do NOT initiate calls for the virtual user directly here because `user-joined` will prompt others to call us!
-  }, [roomId, syncPeersState, socketRef, peersRef, hostedVirtualPeersRef, localStreamRef]);
+  }, [roomId, syncPeersState, socketRef, peersRef, hostedVirtualPeersRef, localStreamRef, watchPartyStream]);
 
   const removeAI = useCallback((virtualId: string) => {
     if (!roomId || !socketRef.current) return;

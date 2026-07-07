@@ -1,2 +1,2 @@
 export type AIState = 'disconnected' | 'connecting' | 'connected' | 'reconnecting';
-export type AIPersona = 'lily' | 'dara' | 'monk' | 'sisamouth' | 'developer' | 'madai' | 'terminator' | 'fifa2026' | 'footballlegend' | 'teacher' | 'questioner' | 'priest' | 'imam' | 'vishnu' | 'lucifer' | 'satan' | 'baphomet' | 'god' | 'ganthy' | 'genghis' | 'newtorn' | 'buddah' | 'angel' | 'hochiminh';
+export type AIPersona = 'lily' | 'dara' | 'monk' | 'sisamouth' | 'developer' | 'madai' | 'terminator' | 'fifa2026' | 'footballlegend' | 'teacher' | 'questioner' | 'priest' | 'imam' | 'vishnu' | 'lucifer' | 'satan' | 'baphomet' | 'god' | 'ganthy' | 'genghis' | 'newtorn' | 'buddah' | 'angel' | 'hochiminh' | 'hivsop' | 'polpot';

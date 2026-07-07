@@ -83,7 +83,7 @@ export function applyBitrateLimits(pc: RTCPeerConnection, isScreenSharing: boole
 import type { PeerInfo, PeerState, CallStats } from './types';
 export type { PeerInfo, PeerState, ChatMessage, VideoSyncState, CallStats } from './types';
 
-export const useWebRTC = (roomId: string, userName: string, userId: string, activeCall?: any) => {
+export const useWebRTC = (roomId: string, userName: string, userId: string, activeCall?: any, watchPartyStream: MediaStream | null = null) => {
   const [peers, setPeers] = useState<Record<string, PeerState>>({});
   const [isHandRaised, setIsHandRaised] = useState(false);
   
@@ -124,7 +124,7 @@ export const useWebRTC = (roomId: string, userName: string, userId: string, acti
   } = useChatDataChannel({ userName, peersRef, hostedVirtualPeersRef, syncPeersState });
 
   const { summonAI, removeAI } = useAIParticipantManager({
-    roomId, socketRef, peersRef, hostedVirtualPeersRef, localStreamRef, syncPeersState, toggleScreenShare
+    roomId, socketRef, peersRef, hostedVirtualPeersRef, localStreamRef, syncPeersState, toggleScreenShare, watchPartyStream
   });
 
   const createPeerConnection = useCallback((targetInfo: PeerInfo): RTCPeerConnection => {
@@ -487,6 +487,27 @@ export const useWebRTC = (roomId: string, userName: string, userId: string, acti
       }
     });
   }, [videoSyncState.url, videoSyncState.playing, Math.floor(videoSyncState.playedSeconds / 10)]);
+
+  // Dynamically feed/remove Watch Party stream from all running AIs
+  useEffect(() => {
+    Object.values(hostedVirtualPeersRef.current).forEach(vp => {
+      if (vp.aiInstance) {
+        if (watchPartyStream) {
+          vp.aiInstance.addStream(watchPartyStream);
+        }
+      }
+    });
+
+    return () => {
+      if (watchPartyStream) {
+        Object.values(hostedVirtualPeersRef.current).forEach(vp => {
+          if (vp.aiInstance) {
+            vp.aiInstance.removeStream(watchPartyStream);
+          }
+        });
+      }
+    };
+  }, [watchPartyStream]);
 
   return {
     localStream, peers, isMuted, isCameraOff, isScreenSharing, chatMessages, stats, videoSyncState,

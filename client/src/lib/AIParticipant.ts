@@ -3,6 +3,7 @@ import { PERSONAS } from './ai/personas';
 import { buildLiveSetupPayload } from './ai/liveConfig';
 import { downsampleBuffer, floatTo16BitPCM, arrayBufferToBase64 } from './ai/audioUtils';
 import { getAiProxyUrl } from './serverConfig';
+import { getSharedAudioContext } from './sharedAudioContext';
 
 export class AIParticipant extends EventTarget {
   private ws: WebSocket | null = null;
@@ -53,8 +54,7 @@ export class AIParticipant extends EventTarget {
   constructor(persona: AIPersona = 'lily') {
     super();
     this.personaId = persona;
-    const AudioContextClass = window.AudioContext || (window as any).webkitAudioContext;
-    this.audioContext = new AudioContextClass({ sampleRate: 24000 }); // Output from Gemini is 24kHz
+    this.audioContext = getSharedAudioContext();
     this.mixerNode = this.audioContext.createGain();
     this.destinationNode = this.audioContext.createMediaStreamDestination();
     this.outputCompressor = this.audioContext.createDynamicsCompressor();

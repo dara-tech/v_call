@@ -124,6 +124,8 @@ export const CallRoom: React.FC<CallRoomProps> = ({
   onLeave,
   onWatchPartyChange,
 }) => {
+  const [watchPartyAudioStream, setWatchPartyAudioStream] = useState<MediaStream | null>(null);
+
   // Instantiate WebRTC Hook
   const {
     localStream,
@@ -143,7 +145,7 @@ export const CallRoom: React.FC<CallRoomProps> = ({
     initLocalMedia,
     summonAI,
     removeAI,
-  } = useWebRTC(roomId, userName, userId, activeCall);
+  } = useWebRTC(roomId, userName, userId, activeCall, watchPartyAudioStream);
 
   const {
     isTranslateActive,
@@ -156,7 +158,7 @@ export const CallRoom: React.FC<CallRoomProps> = ({
     translateOutputHistory,
     startLiveTranslate,
     stopLiveTranslate,
-  } = useLiveTranslate(peers, localStream);
+  } = useLiveTranslate(peers, localStream, watchPartyAudioStream);
 
   // UI state toggles
   const [showWatchParty, setShowWatchParty] = useState(false);
@@ -300,6 +302,7 @@ export const CallRoom: React.FC<CallRoomProps> = ({
           activePersonas={activePersonas}
           onSummon={summonAI}
           onRemove={removeAI}
+          onOpenSettings={() => setShowSettings(true)}
           className="pb-2 pt-2"
         />
       </div>
@@ -312,6 +315,10 @@ export const CallRoom: React.FC<CallRoomProps> = ({
               videoSyncState={videoSyncState}
               broadcastVideoState={broadcastVideoState}
               onClose={() => setShowWatchParty(false)}
+              onAudioStreamChange={setWatchPartyAudioStream}
+              onStartTranslate={startLiveTranslate}
+              onStopTranslate={stopLiveTranslate}
+              isTranslateActive={isTranslateActive}
             />
           </div>
         )}

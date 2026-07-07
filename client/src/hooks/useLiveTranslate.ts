@@ -58,6 +58,7 @@ function countHumanAudioPeers(peers: Record<string, PeerState>): number {
 export function useLiveTranslate(
   peers: Record<string, PeerState>,
   localStream: MediaStream | null,
+  watchPartyStream: MediaStream | null = null,
 ) {
   const instanceRef = useRef<LiveTranslate | null>(null);
   const attachedStreamIdsRef = useRef<Set<string>>(new Set());
@@ -100,7 +101,16 @@ export function useLiveTranslate(
       }
     }
 
-    const shouldUseLocalMic = humanCount === 0 && localStream?.getAudioTracks().length;
+    if (watchPartyStream && watchPartyStream.getAudioTracks().length) {
+      wanted.add(watchPartyStream.id);
+      if (!attachedStreamIdsRef.current.has(watchPartyStream.id)) {
+        instance.addStream(watchPartyStream);
+        attachedStreamIdsRef.current.add(watchPartyStream.id);
+      }
+    }
+
+    const hasWatchPartyAudio = Boolean(watchPartyStream && watchPartyStream.getAudioTracks().length);
+    const shouldUseLocalMic = humanCount === 0 && localStream?.getAudioTracks().length && !hasWatchPartyAudio;
     if (shouldUseLocalMic) {
       wanted.add(localStream.id);
       if (!attachedStreamIdsRef.current.has(localStream.id)) {
@@ -118,6 +128,8 @@ export function useLiveTranslate(
       if (!wanted.has(id)) {
         if (localStream?.id === id) {
           instance.removeStream(localStream);
+        } else if (watchPartyStream?.id === id) {
+          instance.removeStream(watchPartyStream);
         } else {
           for (const peer of Object.values(peers)) {
             if (peer.stream?.id === id) {
@@ -129,7 +141,7 @@ export function useLiveTranslate(
         attachedStreamIdsRef.current.delete(id);
       }
     }
-  }, [peers, localStream]);
+  }, [peers, localStream, watchPartyStream]);
 
   const stopTranslate = useCallback(() => {
     instanceRef.current?.disconnect();
@@ -184,12 +196,6 @@ export function useLiveTranslate(
     }
 
     syncPeerStreams();
-
-    if (!instance.hasAudioSources()) {
-      toast.warning('No audio to translate — join with another speaker or enable your mic');
-      stopTranslate();
-      return;
-    }
 
     setIsActive(true);
 

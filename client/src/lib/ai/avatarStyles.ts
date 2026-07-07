@@ -27,6 +27,8 @@ export const AI_AVATAR_STYLES: Record<string, { from: string; to: string; initia
   buddah: { from: '#fcd34d', to: '#b45309', initial: 'Bu' },
   angel: { from: '#e0f2fe', to: '#7dd3fc', initial: 'An' },
   hochiminh: { from: '#d4d4d8', to: '#52525b', initial: 'HCM' },
+  hivsop: { from: '#dc2626', to: '#991b1b', initial: 'HIV' },
+  polpot: { from: '#0f766e', to: '#115e59', initial: 'PP' },
 };
 
 const DISPLAY_NAME_TO_KEY: Record<string, string> = Object.fromEntries(
@@ -45,6 +47,12 @@ DISPLAY_NAME_TO_KEY['the questioner'] = 'questioner';
 DISPLAY_NAME_TO_KEY['កំពូលអ្នកចាក់បាល់'] = 'footballlegend';
 DISPLAY_NAME_TO_KEY['online pool'] = 'footballlegend';
 DISPLAY_NAME_TO_KEY['pool legend'] = 'footballlegend';
+DISPLAY_NAME_TO_KEY['hiv sop'] = 'hivsop';
+DISPLAY_NAME_TO_KEY['hiv sop indicator'] = 'hivsop';
+DISPLAY_NAME_TO_KEY['expert hiv sop indicator'] = 'hivsop';
+DISPLAY_NAME_TO_KEY['hiv sop expert'] = 'hivsop';
+DISPLAY_NAME_TO_KEY['pol pot'] = 'polpot';
+DISPLAY_NAME_TO_KEY['saloth sar'] = 'polpot';
 
 export function resolvePersonaKey(displayName: string): string {
   const normalized = displayName.trim().toLowerCase();
