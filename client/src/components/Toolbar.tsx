@@ -13,6 +13,7 @@ import {
   Copy,
   Check,
   Languages,
+  CircleDot,
 } from 'lucide-react';
 import { LIVE_TRANSLATE_LANGUAGES } from '../lib/ai/liveConfig';
 import { playFutureClick } from '../lib/ui/futureClickSound';
@@ -39,6 +40,9 @@ interface ToolbarProps {
   onLeaveCall: () => void;
   onCopyInvite?: () => void;
   isCopied?: boolean;
+  isScreenRecording?: boolean;
+  recordingDurationSec?: number;
+  onToggleScreenRecording?: () => void;
 }
 
 export const Toolbar: React.FC<ToolbarProps> = ({
@@ -57,6 +61,9 @@ export const Toolbar: React.FC<ToolbarProps> = ({
   onLeaveCall,
   onCopyInvite,
   isCopied,
+  isScreenRecording = false,
+  recordingDurationSec = 0,
+  onToggleScreenRecording,
 }) => {
   const [translateOpen, setTranslateOpen] = useState(false);
   const targetLabel =
@@ -132,6 +139,35 @@ export const Toolbar: React.FC<ToolbarProps> = ({
             <p>{isScreenSharing ? 'Stop sharing' : 'Share screen'}</p>
           </TooltipContent>
         </Tooltip>
+
+        {/* Screen recording — screen + mic + call/system audio */}
+        {onToggleScreenRecording && (
+          <Tooltip>
+            <TooltipTrigger asChild>
+              <Button
+                type="button"
+                variant={isScreenRecording ? 'destructive' : 'outline'}
+                size="icon-sm"
+                className={`shrink-0 snap-center size-[2.25rem] sm:size-[2.75rem] rounded-full transition-all shadow-sm ${
+                  isScreenRecording
+                    ? 'animate-pulse border-brand-rose bg-brand-rose hover:bg-brand-rose'
+                    : 'border-brand-rose/40 text-brand-rose hover:bg-brand-rose/10'
+                }`}
+                onClick={onToggleScreenRecording}
+                aria-label={isScreenRecording ? 'Stop screen recording' : 'Start screen recording'}
+              >
+                <CircleDot className={`size-4 sm:size-5 ${isScreenRecording ? 'text-white' : ''}`} />
+              </Button>
+            </TooltipTrigger>
+            <TooltipContent side="top" className="bg-zinc-950 text-white border-white/10 text-xs hidden sm:block">
+              <p>
+                {isScreenRecording
+                  ? `Stop recording (${String(Math.floor(recordingDurationSec / 60)).padStart(2, '0')}:${String(recordingDurationSec % 60).padStart(2, '0')})`
+                  : 'Record screen (mic + call audio)'}
+              </p>
+            </TooltipContent>
+          </Tooltip>
+        )}
 
         {/* Live Translate */}
         {onStartLiveTranslate && onStopLiveTranslate && (

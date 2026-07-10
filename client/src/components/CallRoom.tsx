@@ -17,6 +17,7 @@ import { PERSONAS } from '../lib/ai/personas';
 import type { AIPersona } from '../lib/ai/types';
 import { useLiveTranslate } from '../hooks/useLiveTranslate';
 import { LiveTranslatePanel } from './LiveTranslatePanel';
+import { useScreenRecorder } from '../hooks/useScreenRecorder';
 
 interface CallRoomProps {
   roomId: string;
@@ -282,6 +283,18 @@ export const CallRoom: React.FC<CallRoomProps> = ({
   const peerList = Object.values(peers);
   const hasPeers = peerList.length > 0;
 
+  const {
+    isRecording: isScreenRecording,
+    durationSec: recordingDurationSec,
+    startRecording,
+    stopRecording,
+  } = useScreenRecorder(localStream, peerList);
+
+  const handleToggleScreenRecording = () => {
+    if (isScreenRecording) stopRecording();
+    else startRecording();
+  };
+
   // Calculate dynamic grid columns based on participant count
   const gridLayoutClass = useMemo(() => {
     const totalCount = peerList.length; 
@@ -295,6 +308,13 @@ export const CallRoom: React.FC<CallRoomProps> = ({
   return (
     <div className="relative z-20 flex h-dvh w-full flex-col overflow-hidden bg-[#0a0a0a] font-sans text-zinc-300">
       <Toaster theme="dark" position="top-center" />
+
+      {isScreenRecording && (
+        <div className="pointer-events-none absolute left-1/2 top-4 z-50 flex -translate-x-1/2 items-center gap-2 rounded-full border border-brand-rose/50 bg-brand-rose/20 px-4 py-1.5 text-xs font-semibold text-brand-rose backdrop-blur-xl">
+          <span className="size-2 animate-pulse rounded-full bg-brand-rose" />
+          REC {String(Math.floor(recordingDurationSec / 60)).padStart(2, '0')}:{String(recordingDurationSec % 60).padStart(2, '0')}
+        </div>
+      )}
 
       {/* AI bar — hidden on mobile while watch party is open */}
       <div className={`shrink-0 pt-safe ${showWatchParty ? 'hidden sm:block' : ''}`}>
@@ -447,6 +467,9 @@ export const CallRoom: React.FC<CallRoomProps> = ({
             onLeaveCall={handleExitRoom}
             onCopyInvite={!showWatchParty ? handleCopyInvite : undefined}
             isCopied={isCopied}
+            isScreenRecording={isScreenRecording}
+            recordingDurationSec={recordingDurationSec}
+            onToggleScreenRecording={handleToggleScreenRecording}
           />
         </div>
       </div>
