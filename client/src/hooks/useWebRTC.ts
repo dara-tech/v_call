@@ -92,6 +92,8 @@ export const useWebRTC = (roomId: string, userName: string, userId: string, acti
   });
 
   const socketRef = useRef<Socket | null>(null);
+  const localSocketIdRef = useRef<string | null>(null);
+  const [localSocketId, setLocalSocketId] = useState<string | null>(null);
   const peersRef = useRef<Record<string, PeerState>>({});
   const localStreamRef = useRef<MediaStream | null>(null);
   const statsIntervalRef = useRef<number | null>(null);
@@ -123,10 +125,72 @@ export const useWebRTC = (roomId: string, userName: string, userId: string, acti
     setupDataChannel, sendChatMessage, broadcastVideoState,
     patchVideoState, addToQueue, removeFromQueue, playQueueIndex,
     playNextInQueue, playPreviousInQueue, clearQueue,
-  } = useChatDataChannel({ userName, peersRef, hostedVirtualPeersRef, syncPeersState });
+  } = useChatDataChannel({ userName, peersRef, hostedVirtualPeersRef, syncPeersState, localSocketIdRef });
+
+  const assignStreamToPeer = useCallback((targetSocketId: string, event: RTCTrackEvent) => {
+    const peer = peersRef.current[targetSocketId];
+    if (!peer) return;
+    const streams = event.streams;
+    if (streams?.[0]) {
+      peer.stream = new MediaStream(streams[0].getTracks());
+    } else {
+      const stream = peer.stream || new MediaStream();
+      stream.addTrack(event.track);
+      peer.stream = new MediaStream(stream.getTracks());
+    }
+    if (targetSocketId.startsWith('ai_')) {
+      peer.aiState = 'connected';
+    }
+    syncPeersState();
+    Object.values(hostedVirtualPeersRef.current).forEach((vp) => {
+      if (peer.stream) vp.aiInstance.addStream(peer.stream);
+    });
+  }, [syncPeersState]);
+
+  const bridgeVirtualToPeer = useCallback(async (virtualId: string, targetSocketId: string) => {
+    const vp = hostedVirtualPeersRef.current[virtualId];
+    if (!vp || vp.pcs[targetSocketId] || targetSocketId.startsWith('ai_')) return;
+
+    const pc = new RTCPeerConnection(iceServersRef.current);
+    vp.pcs[targetSocketId] = pc;
+
+    vp.stream.getTracks().forEach((track) => pc.addTrack(track, vp.stream));
+
+    pc.onicecandidate = (event) => {
+      if (event.candidate && socketRef.current) {
+        socketRef.current.emit('relay-signal', {
+          targetSocketId,
+          virtualSenderId: virtualId,
+          signalData: { type: 'candidate', candidate: event.candidate },
+        });
+      }
+    };
+
+    try {
+      const offer = await pc.createOffer();
+      const hdOffer = { type: offer.type, sdp: preferOpusHd(offer.sdp || '') };
+      await pc.setLocalDescription(hdOffer);
+      socketRef.current?.emit('relay-signal', {
+        targetSocketId,
+        virtualSenderId: virtualId,
+        signalData: { type: 'sdp-offer', sdp: hdOffer },
+      });
+    } catch (error) {
+      console.error('[WebRTC] Failed to bridge AI to peer:', error);
+    }
+  }, []);
+
+  const bridgeVirtualToAllPeers = useCallback((virtualId: string) => {
+    Object.keys(peersRef.current).forEach((socketId) => {
+      if (!socketId.startsWith('ai_') && peersRef.current[socketId]?.pc) {
+        bridgeVirtualToPeer(virtualId, socketId);
+      }
+    });
+  }, [bridgeVirtualToPeer]);
 
   const { summonAI, removeAI } = useAIParticipantManager({
-    roomId, socketRef, peersRef, hostedVirtualPeersRef, localStreamRef, syncPeersState, toggleScreenShare, watchPartyStream
+    roomId, socketRef, peersRef, hostedVirtualPeersRef, localStreamRef, syncPeersState, toggleScreenShare, watchPartyStream,
+    bridgeVirtualToAllPeers,
   });
 
   const createPeerConnection = useCallback((targetInfo: PeerInfo): RTCPeerConnection => {
@@ -137,30 +201,18 @@ export const useWebRTC = (roomId: string, userName: string, userId: string, acti
     syncPeersState();
 
     pc.onconnectionstatechange = () => {
+      if (pc.connectionState === 'connected') {
+        Object.keys(hostedVirtualPeersRef.current).forEach((virtualId) => {
+          bridgeVirtualToPeer(virtualId, targetSocketId);
+        });
+      }
       if (pc.connectionState === 'failed' || pc.connectionState === 'disconnected') handleIceRestart(targetSocketId);
     };
     pc.oniceconnectionstatechange = () => {
       if (pc.iceConnectionState === 'failed' || pc.iceConnectionState === 'disconnected') handleIceRestart(targetSocketId);
     };
 
-    pc.ontrack = (event) => {
-      const peer = peersRef.current[targetSocketId];
-      if (peer) {
-        const streams = event.streams;
-        if (streams && streams[0]) {
-          peer.stream = new MediaStream(streams[0].getTracks());
-        } else {
-          const stream = peer.stream || new MediaStream();
-          stream.addTrack(event.track);
-          peer.stream = new MediaStream(stream.getTracks());
-        }
-        syncPeersState();
-        
-        Object.values(hostedVirtualPeersRef.current).forEach(vp => {
-          if (peer.stream) vp.aiInstance.addStream(peer.stream);
-        });
-      }
-    };
+    pc.ontrack = (event) => assignStreamToPeer(targetSocketId, event);
 
     pc.ondatachannel = (e) => setupDataChannel(e.channel, targetSocketId, targetUserName);
 
@@ -176,11 +228,12 @@ export const useWebRTC = (roomId: string, userName: string, userId: string, acti
 
     applyBitrateLimits(pc);
     return pc;
-  }, [syncPeersState, setupDataChannel]);
+  }, [syncPeersState, setupDataChannel, assignStreamToPeer, bridgeVirtualToPeer]);
 
   const initiateCall = useCallback(async (targetInfo: PeerInfo) => {
     try {
-      if (peersRef.current[targetInfo.socketId]) return;
+      if (targetInfo.socketId.startsWith('ai_')) return;
+      if (peersRef.current[targetInfo.socketId]?.pc) return;
 
       const pc = createPeerConnection(targetInfo);
       const dataChannel = pc.createDataChannel('chat-channel');
@@ -339,6 +392,8 @@ export const useWebRTC = (roomId: string, userName: string, userId: string, acti
     socketRef.current = socket;
 
     socket.on('connect', () => {
+      localSocketIdRef.current = socket.id ?? null;
+      setLocalSocketId(socket.id ?? null);
       socket.emit('join-room', { roomId, userId, userName });
 
       if (activeCall && activeCall.role === 'caller' && activeCall.partnerId) {
@@ -358,25 +413,38 @@ export const useWebRTC = (roomId: string, userName: string, userId: string, acti
     });
 
     socket.on('all-users', (users: PeerInfo[]) => {
-      // Only the joiner receives all-users — they initiate offers to existing peers.
       users.forEach((user) => {
-        if (user.socketId && user.socketId !== socket.id) {
-          initiateCall(user);
+        if (!user.socketId || user.socketId === socket.id) return;
+
+        if (user.socketId.startsWith('ai_')) {
+          if (!peersRef.current[user.socketId]) {
+            peersRef.current[user.socketId] = {
+              info: user,
+              stream: null,
+              pc: null,
+              dataChannel: null,
+              aiState: 'connecting',
+            };
+          }
+          return;
         }
+
+        initiateCall(user);
       });
+      syncPeersState();
     });
 
     socket.on('signal-received', async ({ senderSocketId, signalData, targetVirtualId }) => {
-      if (targetVirtualId) {
+      // Host answering inbound signaling for a locally hosted AI
+      if (targetVirtualId && hostedVirtualPeersRef.current[targetVirtualId]) {
         const vp = hostedVirtualPeersRef.current[targetVirtualId];
-        if (!vp) return;
 
         let pc = vp.pcs[senderSocketId];
         if (signalData.type === 'sdp-offer') {
           if (!pc) {
             pc = new RTCPeerConnection(iceServersRef.current);
             vp.pcs[senderSocketId] = pc;
-            vp.stream.getTracks().forEach(track => pc.addTrack(track, vp.stream));
+            vp.stream.getTracks().forEach((track) => pc.addTrack(track, vp.stream));
             pc.onicecandidate = (event) => {
               if (event.candidate) {
                 socket.emit('relay-signal', { targetSocketId: senderSocketId, virtualSenderId: targetVirtualId, signalData: { type: 'candidate', candidate: event.candidate } });
@@ -393,6 +461,78 @@ export const useWebRTC = (roomId: string, userName: string, userId: string, acti
         return;
       }
 
+      // Remote viewer receiving AI stream from the host
+      if (targetVirtualId) {
+        const virtualInfo: PeerInfo = {
+          socketId: targetVirtualId,
+          userId: targetVirtualId,
+          userName: peersRef.current[targetVirtualId]?.info.userName || 'AI',
+        };
+
+        if (signalData.type === 'sdp-offer') {
+          let peer = peersRef.current[targetVirtualId];
+          if (!peer?.pc) {
+            const pc = new RTCPeerConnection(iceServersRef.current);
+            peersRef.current[targetVirtualId] = {
+              info: virtualInfo,
+              pc,
+              stream: null,
+              dataChannel: null,
+              aiState: 'connecting',
+              aiHostSocketId: senderSocketId,
+            };
+            pc.ontrack = (event) => assignStreamToPeer(targetVirtualId, event);
+            pc.onicecandidate = (event) => {
+              if (event.candidate) {
+                socket.emit('relay-signal', {
+                  targetSocketId: senderSocketId,
+                  signalData: { type: 'candidate', candidate: event.candidate },
+                });
+              }
+            };
+            peer = peersRef.current[targetVirtualId];
+          }
+
+          try {
+            await peer.pc!.setRemoteDescription(new RTCSessionDescription(signalData.sdp));
+            const answer = await peer.pc!.createAnswer();
+            const hdAnswer = { type: answer.type, sdp: preferOpusHd(answer.sdp || '') };
+            await peer.pc!.setLocalDescription(hdAnswer);
+            socket.emit('relay-signal', {
+              targetSocketId: senderSocketId,
+              signalData: { type: 'sdp-answer', sdp: hdAnswer },
+            });
+            syncPeersState();
+          } catch (err) {
+            console.error('[WebRTC] Failed to receive AI stream:', err);
+          }
+        } else if (signalData.type === 'candidate') {
+          const peer = peersRef.current[targetVirtualId];
+          if (peer?.pc) {
+            try { await peer.pc.addIceCandidate(new RTCIceCandidate(signalData.candidate)); } catch {}
+          }
+        }
+        return;
+      }
+
+      // Answers/candidates for virtual PCs hosted locally (remote viewer answered our AI offer)
+      for (const vp of Object.values(hostedVirtualPeersRef.current)) {
+        const vpc = vp.pcs[senderSocketId];
+        if (!vpc) continue;
+        if (signalData.type === 'sdp-answer' && vpc.signalingState !== 'stable') {
+          try {
+            await vpc.setRemoteDescription(new RTCSessionDescription(signalData.sdp));
+          } catch (err) {
+            console.error('[WebRTC] Virtual AI answer error:', err);
+          }
+          return;
+        }
+        if (signalData.type === 'candidate') {
+          try { await vpc.addIceCandidate(new RTCIceCandidate(signalData.candidate)); } catch {}
+          return;
+        }
+      }
+
       let peer = peersRef.current[senderSocketId];
       if (signalData.type === 'sdp-offer') {
         if (!peer) {
@@ -401,6 +541,7 @@ export const useWebRTC = (roomId: string, userName: string, userId: string, acti
           peer = peersRef.current[senderSocketId];
         }
         try {
+          if (!peer?.pc) return;
           await peer.pc.setRemoteDescription(new RTCSessionDescription(signalData.sdp));
           const answer = await peer.pc.createAnswer();
           const hdAnswer = { type: answer.type, sdp: preferOpusHd(answer.sdp || '') };
@@ -428,8 +569,26 @@ export const useWebRTC = (roomId: string, userName: string, userId: string, acti
       }
     });
 
-    socket.on('user-joined', (_user: PeerInfo) => {
-      // Joiner initiates via all-users; existing peers answer incoming offers.
+    socket.on('user-joined', (user: PeerInfo) => {
+      if (user.socketId?.startsWith('ai_')) {
+        if (!peersRef.current[user.socketId]) {
+          peersRef.current[user.socketId] = {
+            info: user,
+            stream: null,
+            pc: null,
+            dataChannel: null,
+            aiState: 'connecting',
+            aiHostSocketId: (user as PeerInfo & { hostSocketId?: string }).hostSocketId,
+          };
+          syncPeersState();
+        }
+        return;
+      }
+
+      // Bridge all hosted AIs to the newly joined human peer
+      Object.keys(hostedVirtualPeersRef.current).forEach((virtualId) => {
+        bridgeVirtualToPeer(virtualId, user.socketId);
+      });
     });
 
     socket.on('toggle-hand', ({ socketId, handRaised }) => {
@@ -483,7 +642,7 @@ export const useWebRTC = (roomId: string, userName: string, userId: string, acti
       }
       cleanUpPC();
     };
-  }, [roomId, isMediaReady, userId, userName, createPeerConnection, initiateCall, cleanUpPC, startDiagnostics, syncPeersState]);
+  }, [roomId, isMediaReady, userId, userName, createPeerConnection, initiateCall, cleanUpPC, startDiagnostics, syncPeersState, assignStreamToPeer, bridgeVirtualToPeer]);
 
   useEffect(() => {
     if (!videoSyncState.url) return;
@@ -517,7 +676,7 @@ export const useWebRTC = (roomId: string, userName: string, userId: string, acti
   }, [watchPartyStream]);
 
   return {
-    localStream, peers, isMuted, isCameraOff, isScreenSharing, chatMessages, stats, videoSyncState,
+    localStream, peers, isMuted, isCameraOff, isScreenSharing, chatMessages, stats, videoSyncState, localSocketId,
     isHandRaised, sendChatMessage, broadcastVideoState, patchVideoState,
     addToQueue, removeFromQueue, playQueueIndex, playNextInQueue, playPreviousInQueue, clearQueue,
     toggleMute, toggleCamera, toggleScreenShare, toggleHand, sendReaction, leaveCall, initLocalMedia,

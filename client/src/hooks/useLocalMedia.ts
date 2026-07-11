@@ -39,10 +39,11 @@ export const useLocalMedia = ({ localStreamRef, peersRef, hostedVirtualPeersRef 
       Object.values(peersRef.current).forEach((peer) => {
         if (!peer.pc) return;
         const senders = peer.pc.getSenders();
+        const pc = peer.pc;
         stream.getTracks().forEach((track) => {
           const sender = senders.find((s) => s.track?.kind === track.kind);
           if (sender) sender.replaceTrack(track);
-          else peer.pc.addTrack(track, stream);
+          else pc.addTrack(track, stream);
         });
       });
       

@@ -1,9 +1,10 @@
 import React, { useState } from 'react';
 import { Button } from '@/components/ui/button';
-import { Video } from 'lucide-react';
+import { Video, Globe2 } from 'lucide-react';
 
 interface PreCallLobbyProps {
   onJoin: (room: string, name: string, audioId: string, videoId: string) => void;
+  onOpenTvGarden?: () => void;
   defaultRoom: string;
   defaultName?: string;
 }
@@ -31,6 +32,7 @@ const generateName = () =>
 
 export const PreCallLobby: React.FC<PreCallLobbyProps> = ({
   onJoin,
+  onOpenTvGarden,
   defaultRoom,
   defaultName = '',
 }) => {
@@ -63,6 +65,18 @@ export const PreCallLobby: React.FC<PreCallLobbyProps> = ({
         >
           Join Room
         </Button>
+
+        {onOpenTvGarden && (
+          <Button
+            type="button"
+            variant="outline"
+            onClick={onOpenTvGarden}
+            className="mt-3 h-11 min-w-[220px] gap-2 rounded-xl border-white/15 bg-white/5 text-sm font-semibold text-zinc-200 hover:bg-white/10 hover:text-white"
+          >
+            <Globe2 className="size-4 text-brand-cyan" />
+            TV Garden
+          </Button>
+        )}
 
         <p className="mt-4 text-[11px] text-zinc-600">
           Room <span className="font-mono text-zinc-400">{room}</span>

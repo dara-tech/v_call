@@ -7,10 +7,12 @@ export interface PeerInfo {
 export interface PeerState {
   info: PeerInfo;
   stream: MediaStream | null;
-  pc: RTCPeerConnection;
+  pc: RTCPeerConnection | null;
   dataChannel: RTCDataChannel | null;
   aiState?: string;
   handRaised?: boolean;
+  /** Real socket id of the participant hosting this virtual AI (remote viewers only). */
+  aiHostSocketId?: string;
 }
 
 export interface ChatMessage {
@@ -44,6 +46,8 @@ export interface VideoSyncState {
   queueIndex?: number;
   loopQueue?: boolean;
   shuffle?: boolean;
+  /** Socket id of the peer driving playback (heartbeats + transport). */
+  hostSocketId?: string | null;
 }
 
 export interface CallStats {

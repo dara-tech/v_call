@@ -16,6 +16,7 @@ export function createEmptyVideoSyncState(): VideoSyncState {
     queueIndex: -1,
     loopQueue: false,
     shuffle: false,
+    hostSocketId: null,
   };
 }
 

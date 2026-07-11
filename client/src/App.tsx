@@ -1,8 +1,12 @@
 import { useState } from 'react';
 import { PreCallLobby } from './components/PreCallLobby';
 import { CallRoom } from './components/CallRoom';
+import { TvGardenPanel } from './components/tvgarden/TvGardenPanel';
+
+type AppScreen = 'lobby' | 'call' | 'tvgarden';
 
 function App() {
+  const [screen, setScreen] = useState<AppScreen>('lobby');
   const [callParams, setCallParams] = useState<{
     room: string;
     name: string;
@@ -12,15 +16,21 @@ function App() {
 
   const handleJoin = (room: string, name: string, audioId: string, videoId: string) => {
     setCallParams({ room, name, audioId, videoId });
+    setScreen('call');
   };
 
   const handleLeave = () => {
     setCallParams(null);
+    setScreen('lobby');
   };
 
-  if (callParams) {
+  if (screen === 'tvgarden') {
+    return <TvGardenPanel onClose={() => setScreen('lobby')} />;
+  }
+
+  if (screen === 'call' && callParams) {
     return (
-      <CallRoom 
+      <CallRoom
         roomId={callParams.room}
         userName={callParams.name}
         userId={`user_${Math.random().toString(36).substr(2, 9)}`}
@@ -33,9 +43,10 @@ function App() {
   }
 
   return (
-    <PreCallLobby 
-      onJoin={handleJoin} 
-      defaultRoom="lobby" 
+    <PreCallLobby
+      onJoin={handleJoin}
+      onOpenTvGarden={() => setScreen('tvgarden')}
+      defaultRoom="lobby"
     />
   );
 }

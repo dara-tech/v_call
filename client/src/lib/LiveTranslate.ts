@@ -15,7 +15,6 @@ export class LiveTranslate extends EventTarget {
   private outputGain: GainNode;
   private streams: Set<MediaStream> = new Set();
   private sources: Map<string, MediaStreamAudioSourceNode> = new Map();
-  private audioElements: Map<string, HTMLAudioElement> = new Map();
 
   private nextPlayTime = 0;
   private readonly JITTER_BUFFER_MS = 90;
@@ -41,7 +40,7 @@ export class LiveTranslate extends EventTarget {
     this.audioContext = getSharedAudioContext();
     this.mixerNode = this.audioContext.createGain();
     this.outputGain = this.audioContext.createGain();
-    this.outputGain.gain.value = 1.1;
+    this.outputGain.gain.value = 1.5;
     this.outputGain.connect(this.audioContext.destination);
 
     this.silentSink = this.audioContext.createGain();
@@ -187,9 +186,6 @@ export class LiveTranslate extends EventTarget {
           }));
         }
         if (msg.serverContent?.turnComplete) {
-          if (['km', 'th', 'vi'].includes(this.targetLanguageCode) && this.currentTurnText) {
-            this.speakText(this.currentTurnText);
-          }
           this.currentTurnText = '';
         }
 
@@ -198,6 +194,9 @@ export class LiveTranslate extends EventTarget {
           for (const part of parts) {
             const inline = part.inlineData ?? part.inline_data;
             if (inline?.data) {
+              if (this.audioContext.state === 'suspended') {
+                this.audioContext.resume().catch(() => {});
+              }
               this.playAudio(inline.data);
             }
           }
@@ -238,23 +237,22 @@ export class LiveTranslate extends EventTarget {
   }
 
   public addStream(stream: MediaStream) {
-    if (!stream || this.streams.has(stream) || stream.getAudioTracks().length === 0) return;
+    if (!stream || this.streams.has(stream)) return;
+    const audioTracks = stream.getAudioTracks();
+    if (audioTracks.length === 0) return;
+
     try {
-      const audioEl = document.createElement('audio');
-      audioEl.srcObject = stream;
-      audioEl.autoplay = true;
-      audioEl.muted = true;
-      audioEl.setAttribute('playsinline', '');
-      audioEl.style.display = 'none';
-      document.body.appendChild(audioEl);
-      audioEl.play().catch(() => {});
-      this.audioElements.set(stream.id, audioEl);
+      if (this.audioContext.state === 'suspended') {
+        this.audioContext.resume().catch(() => {});
+      }
+
+      audioTracks.forEach((t) => { t.enabled = true; });
 
       const source = this.audioContext.createMediaStreamSource(stream);
       source.connect(this.mixerNode);
       this.sources.set(stream.id, source);
       this.streams.add(stream);
-      console.log('[LiveTranslate] Added audio stream:', stream.id);
+      console.log('[LiveTranslate] Added audio stream:', stream.id, audioTracks.length, 'track(s)');
     } catch (e) {
       console.error('[LiveTranslate] addStream failed:', e);
     }
@@ -267,13 +265,6 @@ export class LiveTranslate extends EventTarget {
     if (source) {
       source.disconnect();
       this.sources.delete(stream.id);
-    }
-    const audioEl = this.audioElements.get(stream.id);
-    if (audioEl) {
-      audioEl.pause();
-      audioEl.srcObject = null;
-      audioEl.remove();
-      this.audioElements.delete(stream.id);
     }
   }
 
@@ -302,12 +293,6 @@ export class LiveTranslate extends EventTarget {
       this.sources.forEach((s) => s.disconnect());
       this.sources.clear();
       this.streams.clear();
-      this.audioElements.forEach((el) => {
-        el.pause();
-        el.srcObject = null;
-        el.remove();
-      });
-      this.audioElements.clear();
       this.currentTurnText = '';
     } catch { /* noop */ }
     this.setState('disconnected');
@@ -343,36 +328,5 @@ export class LiveTranslate extends EventTarget {
       this.activeSources = this.activeSources.filter((s) => s !== source);
     };
     this.nextPlayTime += audioBuffer.duration;
-  }
-
-  private speakText(text: string) {
-    if (!window.speechSynthesis) return;
-
-    window.speechSynthesis.cancel();
-
-    const utterance = new SpeechSynthesisUtterance(text);
-    
-    if (this.targetLanguageCode === 'km') {
-      utterance.lang = 'km-KH';
-    } else if (this.targetLanguageCode === 'th') {
-      utterance.lang = 'th-TH';
-    } else if (this.targetLanguageCode === 'vi') {
-      utterance.lang = 'vi-VN';
-    } else {
-      utterance.lang = this.targetLanguageCode;
-    }
-
-    utterance.rate = 0.95;
-    utterance.pitch = 1.0;
-
-    const voices = window.speechSynthesis.getVoices();
-    const matchingVoice = voices.find(v => 
-      v.lang.toLowerCase().replace('_', '-').startsWith(this.targetLanguageCode.toLowerCase())
-    );
-    if (matchingVoice) {
-      utterance.voice = matchingVoice;
-    }
-
-    window.speechSynthesis.speak(utterance);
   }
 }

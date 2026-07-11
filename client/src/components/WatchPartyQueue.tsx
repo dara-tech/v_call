@@ -5,6 +5,7 @@ import type { VideoSyncState } from '../hooks/types';
 
 interface WatchPartyQueueProps {
   videoSyncState: VideoSyncState;
+  canControl?: boolean;
   onPlayIndex: (index: number) => void;
   onRemove: (videoId: string) => void;
   onClear: () => void;
@@ -13,6 +14,7 @@ interface WatchPartyQueueProps {
 
 export const WatchPartyQueue: React.FC<WatchPartyQueueProps> = ({
   videoSyncState,
+  canControl = true,
   onPlayIndex,
   onRemove,
   onClear,
@@ -29,7 +31,7 @@ export const WatchPartyQueue: React.FC<WatchPartyQueueProps> = ({
           <p className="text-[10px] text-zinc-500">{queue.length} video{queue.length !== 1 ? 's' : ''} in queue</p>
         </div>
         <div className="flex items-center gap-1">
-          {queue.length > 0 && (
+          {queue.length > 0 && canControl && (
             <Button variant="ghost" size="sm" onClick={onClear}
               className="h-7 px-2 text-[10px] text-zinc-500 hover:text-brand-rose">
               Clear
@@ -50,6 +52,9 @@ export const WatchPartyQueue: React.FC<WatchPartyQueueProps> = ({
           </div>
         ) : (
           <div className="space-y-1.5">
+            {!canControl && (
+              <p className="px-2 pb-1 text-[10px] text-zinc-600">Queue is synced from the host</p>
+            )}
             {queue.map((video, index) => {
               const isActive = index === currentIndex;
               return (
@@ -76,17 +81,19 @@ export const WatchPartyQueue: React.FC<WatchPartyQueueProps> = ({
                       <p className="text-[9px] text-zinc-600">{video.duration}</p>
                     )}
                   </div>
-                  <div className="flex shrink-0 flex-col gap-1 opacity-0 transition-opacity group-hover:opacity-100">
-                    {!isActive && (
+                  <div className={`flex shrink-0 flex-col gap-1 transition-opacity ${canControl ? 'opacity-0 group-hover:opacity-100' : 'opacity-0'}`}>
+                    {!isActive && canControl && (
                       <Button variant="ghost" size="icon-sm" onClick={() => onPlayIndex(index)}
                         className="size-7 text-zinc-400 hover:text-brand-cyan">
                         <Play className="size-3.5" />
                       </Button>
                     )}
+                    {canControl && (
                     <Button variant="ghost" size="icon-sm" onClick={() => onRemove(video.id)}
                       className="size-7 text-zinc-500 hover:text-brand-rose">
                       <Trash2 className="size-3.5" />
                     </Button>
+                    )}
                   </div>
                 </div>
               );

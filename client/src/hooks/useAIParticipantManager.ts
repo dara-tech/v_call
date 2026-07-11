@@ -21,6 +21,7 @@ interface UseAIParticipantManagerProps {
   syncPeersState: () => void;
   toggleScreenShare: () => void;
   watchPartyStream?: MediaStream | null;
+  bridgeVirtualToAllPeers?: (virtualId: string) => void;
 }
 
 export const useAIParticipantManager = ({
@@ -31,17 +32,18 @@ export const useAIParticipantManager = ({
   localStreamRef,
   syncPeersState,
   toggleScreenShare,
-  watchPartyStream
+  watchPartyStream,
+  bridgeVirtualToAllPeers,
 }: UseAIParticipantManagerProps) => {
 
   const summonAI = useCallback(async (persona: AIPersona = 'lily') => {
     if (!roomId) return;
     
-    // Create virtual ID for AI
     const virtualId = `ai_${Math.random().toString(36).substr(2, 9)}`;
     const ai = new AIParticipant(persona);
     const personaConfig = PERSONAS[persona];
     
+    try {
     ai.addEventListener('statechange', ((e: CustomEvent) => {
       if (peersRef.current[virtualId]) {
         peersRef.current[virtualId].aiState = e.detail;
@@ -114,16 +116,14 @@ export const useAIParticipantManager = ({
     }) as EventListener);
 
     await ai.connect(getAiProxyUrl());
-    
+
     if (localStreamRef.current) ai.addStream(localStreamRef.current);
     if (watchPartyStream) ai.addStream(watchPartyStream);
     
-    // Feed existing remote peers and OTHER existing AIs to the new AI
     Object.values(peersRef.current).forEach(peer => {
       if (peer.stream) ai.addStream(peer.stream);
     });
 
-    // CRITICAL: Feed this NEW AI's stream to ALL OTHER locally hosted AIs so they can hear each other!
     Object.values(hostedVirtualPeersRef.current).forEach(existingAi => {
       existingAi.aiInstance.addStream(ai.aiStream);
     });
@@ -131,14 +131,18 @@ export const useAIParticipantManager = ({
     const info: PeerInfo = { socketId: virtualId, userId: virtualId, userName: personaConfig.name };
     hostedVirtualPeersRef.current[virtualId] = { info, stream: ai.aiStream, aiInstance: ai, pcs: {} };
     
-    // Add visually to local peers list
-    peersRef.current[virtualId] = { info, stream: ai.aiStream, pc: null as any, dataChannel: null, aiState: ai.getState() };
+    peersRef.current[virtualId] = { info, stream: ai.aiStream, pc: null, dataChannel: null, aiState: ai.getState() };
     syncPeersState();
 
     socketRef.current?.emit('add-virtual-user', { roomId, virtualId, userName: personaConfig.name });
-    
-    // We do NOT initiate calls for the virtual user directly here because `user-joined` will prompt others to call us!
-  }, [roomId, syncPeersState, socketRef, peersRef, hostedVirtualPeersRef, localStreamRef, watchPartyStream]);
+
+    // Bridge AI audio/video to every human already in the room
+    bridgeVirtualToAllPeers?.(virtualId);
+    } catch (err) {
+      console.error('[AI] Failed to connect:', err);
+      toast.error('AI could not connect. Check server GEMINI_API_KEY and restart v_server.');
+    }
+  }, [roomId, syncPeersState, socketRef, peersRef, hostedVirtualPeersRef, localStreamRef, watchPartyStream, bridgeVirtualToAllPeers]);
 
   const removeAI = useCallback((virtualId: string) => {
     if (!roomId || !socketRef.current) return;

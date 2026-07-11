@@ -3,6 +3,7 @@ import { LiveTranslate } from '../lib/LiveTranslate';
 import { LIVE_TRANSLATE_LANGUAGES } from '../lib/ai/liveConfig';
 import type { PeerState } from './types';
 import { toast } from 'sonner';
+import { getSharedAudioContext } from '../lib/sharedAudioContext';
 
 export type TranslateTranscriptLine = {
   id: string;
@@ -55,6 +56,21 @@ function countHumanAudioPeers(peers: Record<string, PeerState>): number {
   ).length;
 }
 
+async function waitForAudioSources(
+  syncFn: () => void,
+  hasSources: () => boolean,
+  maxMs = 30000,
+): Promise<boolean> {
+  const start = Date.now();
+  while (Date.now() - start < maxMs) {
+    syncFn();
+    if (hasSources()) return true;
+    await new Promise((r) => setTimeout(r, 250));
+  }
+  syncFn();
+  return hasSources();
+}
+
 export function useLiveTranslate(
   peers: Record<string, PeerState>,
   localStream: MediaStream | null,
@@ -63,6 +79,8 @@ export function useLiveTranslate(
   const instanceRef = useRef<LiveTranslate | null>(null);
   const attachedStreamIdsRef = useRef<Set<string>>(new Set());
   const usingLocalMicRef = useRef(false);
+  const watchPartyStreamRef = useRef(watchPartyStream);
+  watchPartyStreamRef.current = watchPartyStream;
   const inputLiveRef = useRef('');
   const outputLiveRef = useRef('');
 
@@ -110,8 +128,12 @@ export function useLiveTranslate(
     }
 
     const hasWatchPartyAudio = Boolean(watchPartyStream && watchPartyStream.getAudioTracks().length);
-    const shouldUseLocalMic = humanCount === 0 && localStream?.getAudioTracks().length && !hasWatchPartyAudio;
-    if (shouldUseLocalMic) {
+    const shouldUseLocalMic =
+      (humanCount === 0 || !hasWatchPartyAudio) &&
+      localStream?.getAudioTracks().length &&
+      !hasWatchPartyAudio;
+
+    if (shouldUseLocalMic && localStream) {
       wanted.add(localStream.id);
       if (!attachedStreamIdsRef.current.has(localStream.id)) {
         instance.addStream(localStream);
@@ -153,9 +175,14 @@ export function useLiveTranslate(
     setTranslateState('disconnected');
   }, [clearTranscripts]);
 
-  const startTranslate = useCallback(async (langCode: string) => {
+  const startTranslate = useCallback(async (langCode: string, expectVideoAudio = false) => {
     stopTranslate();
     setTargetLanguage(langCode);
+
+    const ctx = getSharedAudioContext();
+    if (ctx.state === 'suspended') {
+      await ctx.resume().catch(() => {});
+    }
 
     const instance = new LiveTranslate(langCode);
     instance.addEventListener('statechange', ((e: CustomEvent) => {
@@ -185,6 +212,12 @@ export function useLiveTranslate(
     }) as EventListener);
 
     instanceRef.current = instance;
+    setIsActive(true);
+
+    // Let WatchPartyPlayer mount the proxy <audio> stream before Gemini setup.
+    if (expectVideoAudio) {
+      await new Promise((r) => setTimeout(r, 1000));
+    }
 
     try {
       await instance.connect();
@@ -195,19 +228,38 @@ export function useLiveTranslate(
       return;
     }
 
-    syncPeerStreams();
+    const expectingWatchParty = expectVideoAudio || Boolean(watchPartyStreamRef.current);
+    const hasSource = await waitForAudioSources(
+      () => {
+        syncPeerStreams();
+        const stream = watchPartyStreamRef.current;
+        if (stream && instanceRef.current && !attachedStreamIdsRef.current.has(stream.id)) {
+          instanceRef.current.addStream(stream);
+          attachedStreamIdsRef.current.add(stream.id);
+        }
+      },
+      () => instance.hasAudioSources(),
+      expectingWatchParty ? 45000 : 12000,
+    );
 
-    setIsActive(true);
+    if (!hasSource) {
+      toast.error(
+        expectingWatchParty
+          ? 'Live Translate: waiting for video audio timed out. Try Play Dubbed again.'
+          : 'Live Translate: no audio source. Play a video or unmute your mic.',
+      );
+      stopTranslate();
+      return;
+    }
 
     const label = LIVE_TRANSLATE_LANGUAGES.find((l) => l.code === langCode)?.label ?? langCode;
-    const solo = usingLocalMicRef.current;
-    toast.success(
-      solo
-        ? `Live Translate → ${label} (listening to your mic)`
-        : `Live Translate → ${label}`,
-      { duration: 2500 },
-    );
-  }, [stopTranslate, syncPeerStreams]);
+    const sourceHint = watchPartyStreamRef.current
+      ? 'video audio'
+      : usingLocalMicRef.current
+        ? 'your mic'
+        : 'call audio';
+    toast.success(`Live Translate → ${label} (${sourceHint})`, { duration: 2500 });
+  }, [stopTranslate, syncPeerStreams, watchPartyStream]);
 
   const toggleTranslate = useCallback(async (langCode?: string) => {
     if (isActive) {

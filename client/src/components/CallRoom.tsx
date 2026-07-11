@@ -5,6 +5,7 @@ import { Toolbar } from './Toolbar';
 import { ChatPanel } from './ChatPanel';
 import { DeviceSelect } from './DeviceSelect';
 import { WatchPartyPlayer } from './WatchPartyPlayer';
+import { TvGardenPanel } from './tvgarden/TvGardenPanel';
 import { Dialog, DialogContent, DialogHeader, DialogTitle } from '@/components/ui/dialog';
 import { Button } from '@/components/ui/button';
 import { MicOff, Users, Hand } from 'lucide-react';
@@ -153,6 +154,7 @@ export const CallRoom: React.FC<CallRoomProps> = ({
     initLocalMedia,
     summonAI,
     removeAI,
+    localSocketId,
   } = useWebRTC(roomId, userName, userId, activeCall, watchPartyAudioStream);
 
   const {
@@ -170,10 +172,26 @@ export const CallRoom: React.FC<CallRoomProps> = ({
 
   // UI state toggles
   const [showWatchParty, setShowWatchParty] = useState(false);
+  const [showTvGarden, setShowTvGarden] = useState(false);
+  const mediaOpen = showWatchParty || showTvGarden;
   const [showStats, setShowStats] = useState(false);
   const [showSettings, setShowSettings] = useState(false);
   const [activeAudioId, setActiveAudioId] = useState(initialAudioId);
   const [activeVideoId, setActiveVideoId] = useState(initialVideoId);
+
+  const toggleWatchParty = () => {
+    setShowWatchParty((v) => {
+      if (!v) setShowTvGarden(false);
+      return !v;
+    });
+  };
+
+  const toggleTvGarden = () => {
+    setShowTvGarden((v) => {
+      if (!v) setShowWatchParty(false);
+      return !v;
+    });
+  };
 
   useEffect(() => {
     onWatchPartyChange?.(showWatchParty);
@@ -333,7 +351,7 @@ export const CallRoom: React.FC<CallRoomProps> = ({
       )}
 
       {/* AI bar — hidden on mobile while watch party is open */}
-      <div className={`shrink-0 pt-safe ${showWatchParty ? 'hidden sm:block' : ''}`}>
+      <div className={`shrink-0 pt-safe ${mediaOpen ? 'hidden sm:block' : ''}`}>
         <AiPersonaBar
           activePersonas={activePersonas}
           onSummon={summonAI}
@@ -344,7 +362,7 @@ export const CallRoom: React.FC<CallRoomProps> = ({
       </div>
 
       {/* Main stage */}
-      <div className={`relative flex min-h-0 flex-1 overflow-hidden ${showWatchParty ? 'flex-col sm:flex-row' : ''}`}>
+      <div className={`relative flex min-h-0 flex-1 overflow-hidden ${mediaOpen ? 'flex-col sm:flex-row' : ''}`}>
         {showWatchParty && (
           <div className="flex min-h-0 min-w-0 flex-1 flex-col">
             <WatchPartyPlayer
@@ -362,11 +380,21 @@ export const CallRoom: React.FC<CallRoomProps> = ({
               onStartTranslate={startLiveTranslate}
               onStopTranslate={stopLiveTranslate}
               isTranslateActive={isTranslateActive}
+              translateTargetLanguage={translateTargetLanguage}
+              translateState={translateState}
+              translateOutputLiveText={translateOutputLiveText}
+              localSocketId={localSocketId}
             />
           </div>
         )}
 
-        {isTranslateActive && !showWatchParty ? (
+        {showTvGarden && (
+          <div className="flex min-h-0 min-w-0 flex-1 flex-col">
+            <TvGardenPanel embedded onClose={() => setShowTvGarden(false)} />
+          </div>
+        )}
+
+        {isTranslateActive && !mediaOpen ? (
           <div className="flex min-h-0 min-w-0 flex-1 flex-col">
             <LiveTranslatePanel
               inputLanguageCode={translateInputLanguageCode}
@@ -381,7 +409,7 @@ export const CallRoom: React.FC<CallRoomProps> = ({
         ) : (
         <div
           className={`relative min-h-0 bg-[#0a0a0a] ${
-            showWatchParty
+            mediaOpen
               ? 'hidden min-w-0 sm:flex sm:h-full sm:w-72 sm:shrink-0 sm:flex-col sm:border-l sm:border-zinc-900 sm:p-2'
               : 'flex min-w-0 flex-1 flex-col'
           }`}
@@ -390,7 +418,7 @@ export const CallRoom: React.FC<CallRoomProps> = ({
             {hasPeers ? (
               <div
                 className={
-                  showWatchParty
+                  mediaOpen
                     ? 'flex h-full flex-row gap-2 overflow-x-auto pb-2 sm:flex-col sm:overflow-x-hidden sm:overflow-y-auto sm:pb-0'
                     : `mx-auto grid h-full w-full max-w-7xl auto-rows-fr gap-2 px-2 py-2 sm:gap-4 sm:px-4 sm:py-4 ${gridLayoutClass}`
                 }
@@ -399,7 +427,7 @@ export const CallRoom: React.FC<CallRoomProps> = ({
                   <div
                     key={peer.info.socketId}
                     className={
-                      showWatchParty
+                      mediaOpen
                         ? 'aspect-video w-40 shrink-0 sm:w-full'
                         : 'min-h-[180px] w-full sm:min-h-0'
                     }
@@ -447,7 +475,7 @@ export const CallRoom: React.FC<CallRoomProps> = ({
           <div
             className={`absolute right-3 top-3 z-30 aspect-video w-20 overflow-hidden rounded-xl bg-zinc-950 shadow-lg ring-1 ring-white/15 sm:right-4 sm:top-4 sm:w-28 sm:rounded-2xl md:w-32 ${
               !hasPeers ? 'hidden' : ''
-            } ${showWatchParty || isTranslateActive ? 'hidden sm:block' : ''} ${isTranslateActive ? 'hidden' : ''}`}
+            } ${mediaOpen || isTranslateActive ? 'hidden sm:block' : ''} ${isTranslateActive ? 'hidden' : ''}`}
           >
             {localStream && !isCameraOff ? (
               <video
@@ -503,6 +531,7 @@ export const CallRoom: React.FC<CallRoomProps> = ({
             isScreenSharing={isScreenSharing}
             showStats={showStats}
             showWatchParty={showWatchParty}
+            showTvGarden={showTvGarden}
             isTranslateActive={isTranslateActive}
             translateTargetLanguage={translateTargetLanguage}
             translateState={translateState}
@@ -512,9 +541,10 @@ export const CallRoom: React.FC<CallRoomProps> = ({
             onToggleCamera={toggleCamera}
             onToggleScreenShare={toggleScreenShare}
             onToggleStats={() => setShowStats(!showStats)}
-            onToggleWatchParty={() => setShowWatchParty(!showWatchParty)}
+            onToggleWatchParty={toggleWatchParty}
+            onToggleTvGarden={toggleTvGarden}
             onLeaveCall={handleExitRoom}
-            onCopyInvite={!showWatchParty ? handleCopyInvite : undefined}
+            onCopyInvite={!mediaOpen ? handleCopyInvite : undefined}
             isCopied={isCopied}
             isScreenRecording={isScreenRecording}
             recordingDurationSec={recordingDurationSec}

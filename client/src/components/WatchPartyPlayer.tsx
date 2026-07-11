@@ -7,13 +7,14 @@ import { WatchPartyQueue } from './WatchPartyQueue';
 const ReactPlayer = (ReactPlayerImport as any).default || ReactPlayerImport;
 import { Button } from '@/components/ui/button';
 import { Input } from '@/components/ui/input';
-import { X, Search, RotateCcw, Loader2, Clock, PlayCircle, Link2, ChevronRight, ListPlus, Play } from 'lucide-react';
+import { X, Search, RotateCcw, Loader2, Clock, PlayCircle, Link2, ChevronRight, ListPlus, Play, Languages, Mic2 } from 'lucide-react';
 import type { VideoSyncState, WatchPartyVideo } from '../hooks/types';
 import { apiUrl } from '../lib/serverConfig';
 import { Dialog, DialogContent, DialogHeader, DialogTitle, DialogDescription } from '@/components/ui/dialog';
-import { LIVE_TRANSLATE_LANGUAGES } from '../lib/ai/liveConfig';
+import { LIVE_TRANSLATE_LANGUAGES, getLanguageLabel } from '../lib/ai/liveConfig';
 import { getSharedAudioContext } from '../lib/sharedAudioContext';
 import { DEFAULT_PLAYBACK_RATE, expectedPlayhead, videoFromResult } from '../lib/watchPartyUtils';
+import { toast } from 'sonner';
 
 interface WatchPartyPlayerProps {
   videoSyncState: VideoSyncState;
@@ -27,9 +28,13 @@ interface WatchPartyPlayerProps {
   clearQueue: () => void;
   onClose: () => void;
   onAudioStreamChange?: (stream: MediaStream | null) => void;
-  onStartTranslate?: (langCode: string) => void;
+  onStartTranslate?: (langCode: string, expectVideoAudio?: boolean) => void;
   onStopTranslate?: () => void;
   isTranslateActive?: boolean;
+  translateTargetLanguage?: string;
+  translateState?: string;
+  translateOutputLiveText?: string;
+  localSocketId?: string | null;
 }
 
 interface VideoResult {
@@ -59,7 +64,6 @@ const PLATFORMS = [
 
 export const WatchPartyPlayer: React.FC<WatchPartyPlayerProps> = ({
   videoSyncState,
-  broadcastVideoState,
   patchVideoState,
   addToQueue,
   removeFromQueue,
@@ -72,7 +76,12 @@ export const WatchPartyPlayer: React.FC<WatchPartyPlayerProps> = ({
   onStartTranslate,
   onStopTranslate,
   isTranslateActive,
+  translateTargetLanguage = 'km',
+  translateState = 'disconnected',
+  translateOutputLiveText = '',
+  localSocketId = null,
 }) => {
+  const [inPlayerDubLang, setInPlayerDubLang] = useState(translateTargetLanguage);
   const [selectedVideoForModal, setSelectedVideoForModal] = useState<VideoResult | null>(null);
   const [dubLanguage, setDubLanguage] = useState('km');
   const playerRef = useRef<any>(null);
@@ -97,10 +106,15 @@ export const WatchPartyPlayer: React.FC<WatchPartyPlayerProps> = ({
   const lastPlayedRef = useRef(0);
   const controlsTimeoutRef = useRef<ReturnType<typeof setTimeout> | null>(null);
   const syncHeartbeatRef = useRef<ReturnType<typeof setInterval> | null>(null);
+  const lastAudioSeekRef = useRef(0);
+  const pendingDubLangRef = useRef<string | null>(null);
+  const proxyVideoKeyRef = useRef<string | null>(null);
+  const youtubePlayerRef = useRef<any>(null);
 
   const audioRef = useRef<HTMLAudioElement>(null);
   const audioContextRef = useRef<AudioContext | null>(null);
   const audioSourceNodeRef = useRef<MediaElementAudioSourceNode | null>(null);
+  const captureDestinationRef = useRef<MediaStreamAudioDestinationNode | null>(null);
   const localVolumeNodeRef = useRef<GainNode | null>(null);
 
   const isYoutube = Boolean(
@@ -108,27 +122,72 @@ export const WatchPartyPlayer: React.FC<WatchPartyPlayerProps> = ({
       (videoSyncState.url.includes('youtube.com') || videoSyncState.url.includes('youtu.be'))
   );
 
-  const proxyAudioUrl = isYoutube
-    ? apiUrl(`/api/calls/youtube-audio?url=${encodeURIComponent(videoSyncState.url!)}`)
-    : '';
+  // Proxy audio is only needed for YouTube live-translate capture (iframe audio is not capturable).
+  const useYoutubeProxy = isYoutube && Boolean(isTranslateActive);
 
-  // Handle source changes on the audio element without unmounting it
-  useEffect(() => {
+  const isHost = !videoSyncState.hostSocketId || videoSyncState.hostSocketId === localSocketId;
+  const canControl = isHost || !localSocketId;
+
+  const buildProxyAudioUrl = useCallback((startSeconds: number) => {
+    if (!videoSyncState.url) return '';
+    return apiUrl(
+      `/api/calls/youtube-audio?url=${encodeURIComponent(videoSyncState.url)}&t=${Math.max(0, Math.floor(startSeconds))}`,
+    );
+  }, [videoSyncState.url]);
+
+  const reloadYoutubeProxy = useCallback((startSeconds: number, force = false) => {
     const audioEl = audioRef.current;
-    if (!audioEl) return;
-    if (isYoutube && proxyAudioUrl) {
-      audioEl.src = proxyAudioUrl;
-      audioEl.load();
-    } else {
-      audioEl.src = '';
+    if (!audioEl || !useYoutubeProxy || !videoSyncState.url) return;
+
+    const startAt = Math.max(0, Math.floor(startSeconds));
+    if (!force && Math.abs(startAt - lastAudioSeekRef.current) < 3 && audioEl.src) return;
+
+    lastAudioSeekRef.current = startAt;
+    audioEl.src = buildProxyAudioUrl(startAt);
+    audioEl.load();
+    if (videoSyncState.playing) {
+      audioEl.play().catch((err) => {
+        console.warn('[WatchPartyPlayer] proxy audio play failed:', err);
+      });
     }
-  }, [proxyAudioUrl, isYoutube]);
+  }, [useYoutubeProxy, videoSyncState.url, videoSyncState.playing, buildProxyAudioUrl]);
 
-  // Set up Web Audio API capture on the persistent audio element
+  // Start proxy once when dubbing begins or video changes — do NOT restart on sync heartbeats
   useEffect(() => {
     const audioEl = audioRef.current;
-    if (!audioEl) {
-      onAudioStreamChange?.(null);
+    if (!audioEl || !useYoutubeProxy || !videoSyncState.url) {
+      if (audioEl && !useYoutubeProxy) {
+        audioEl.pause();
+        audioEl.removeAttribute('src');
+        proxyVideoKeyRef.current = null;
+      }
+      if (!useYoutubeProxy) onAudioStreamChange?.(null);
+      return;
+    }
+
+    const key = videoSyncState.url;
+    if (proxyVideoKeyRef.current === key && audioEl.src) return;
+
+    proxyVideoKeyRef.current = key;
+    reloadYoutubeProxy(videoSyncState.playedSeconds ?? 0, true);
+  }, [useYoutubeProxy, videoSyncState.url, videoSyncState.playedSeconds, reloadYoutubeProxy, onAudioStreamChange]);
+
+  // YouTube iframe volume (normal playback — sound comes from the embed, not the proxy)
+  useEffect(() => {
+    const yt = youtubePlayerRef.current;
+    if (!yt || typeof yt.setVolume !== 'function') return;
+    if (isTranslateActive) {
+      yt.setVolume(0);
+    } else {
+      yt.setVolume(isVolumeMuted ? 0 : Math.round(localVolume * 100));
+    }
+  }, [isTranslateActive, isVolumeMuted, localVolume, isPlaying]);
+
+  // Web Audio capture from proxy — feeds Live Translate when dubbing YouTube
+  useEffect(() => {
+    const audioEl = audioRef.current;
+    if (!useYoutubeProxy || !audioEl) {
+      if (!useYoutubeProxy) onAudioStreamChange?.(null);
       return;
     }
 
@@ -142,46 +201,61 @@ export const WatchPartyPlayer: React.FC<WatchPartyPlayerProps> = ({
       ctx.resume().catch(() => {});
     }
 
-    let source = audioSourceNodeRef.current;
-    if (!source) {
-      try {
-        source = ctx.createMediaElementSource(audioEl);
-        audioSourceNodeRef.current = source;
-      } catch (err) {
-        console.warn('[WatchPartyPlayer] createMediaElementSource error:', err);
-      }
-    }
+    let disconnected = false;
 
-    if (source) {
-      const destination = ctx.createMediaStreamDestination();
-      source.connect(destination);
+    const attachCapture = () => {
+      if (disconnected) return;
 
-      // Create a gain node for local speaker output to support background audio ducking
-      const volumeNode = ctx.createGain();
-      volumeNode.gain.value = isTranslateActive ? 0.0 : 1.0;
-      source.connect(volumeNode);
-      volumeNode.connect(ctx.destination);
-      localVolumeNodeRef.current = volumeNode;
-
-      const stream = destination.stream;
-      onAudioStreamChange?.(stream);
-
-      return () => {
+      let source = audioSourceNodeRef.current;
+      if (!source) {
         try {
-          source.disconnect(destination);
-          source.disconnect(volumeNode);
-          volumeNode.disconnect(ctx!.destination);
-        } catch (e) {}
-        localVolumeNodeRef.current = null;
-        onAudioStreamChange?.(null);
-      };
-    }
-  }, [onAudioStreamChange, isTranslateActive]);
+          source = ctx!.createMediaElementSource(audioEl);
+          audioSourceNodeRef.current = source;
+        } catch (err) {
+          console.warn('[WatchPartyPlayer] createMediaElementSource error:', err);
+          return;
+        }
+      }
 
-  // Dynamically duck original audio when live translate is active
+      if (captureDestinationRef.current) {
+        onAudioStreamChange?.(captureDestinationRef.current.stream);
+        return;
+      }
+
+      try {
+        const destination = ctx!.createMediaStreamDestination();
+        source.connect(destination);
+        const volumeNode = ctx!.createGain();
+        volumeNode.gain.value = 0;
+        source.connect(volumeNode);
+        volumeNode.connect(ctx!.destination);
+        captureDestinationRef.current = destination;
+        localVolumeNodeRef.current = volumeNode;
+        onAudioStreamChange?.(destination.stream);
+      } catch (err) {
+        console.warn('[WatchPartyPlayer] audio capture graph error:', err);
+      }
+    };
+
+    audioEl.addEventListener('playing', attachCapture);
+    audioEl.addEventListener('loadeddata', attachCapture);
+    if (audioEl.readyState >= 2) attachCapture();
+
+    return () => {
+      disconnected = true;
+      audioEl.removeEventListener('playing', attachCapture);
+      audioEl.removeEventListener('loadeddata', attachCapture);
+      onAudioStreamChange?.(null);
+      captureDestinationRef.current = null;
+      audioSourceNodeRef.current = null;
+      localVolumeNodeRef.current = null;
+    };
+  }, [onAudioStreamChange, useYoutubeProxy]);
+
+  // Ducking handled via YouTube setVolume(0) when translate is active
   useEffect(() => {
     if (localVolumeNodeRef.current) {
-      localVolumeNodeRef.current.gain.value = isTranslateActive ? 0.0 : 1.0;
+      localVolumeNodeRef.current.gain.value = 0;
     }
   }, [isTranslateActive]);
 
@@ -203,68 +277,107 @@ export const WatchPartyPlayer: React.FC<WatchPartyPlayerProps> = ({
       }
     }
 
-    if (audioEl) {
+    if (audioEl && useYoutubeProxy) {
       audioEl.playbackRate = rate;
+      const audioDrift = Math.abs(audioEl.currentTime - expectedTime);
+      if (audioDrift > 4) {
+        reloadYoutubeProxy(expectedTime, true);
+      } else if (audioDrift > 0.75 && videoSyncState.playing) {
+        audioEl.currentTime = expectedTime;
+      }
       if (videoSyncState.playing) {
         audioEl.play().catch(() => {});
       } else {
         audioEl.pause();
       }
-      if (Math.abs(audioEl.currentTime - expectedTime) > 1.5) {
-        audioEl.currentTime = expectedTime;
-      }
-      audioEl.volume = isVolumeMuted ? 0 : localVolume;
     }
-  }, [videoSyncState, isYoutube, isVolumeMuted, localVolume]);
 
-  // Periodic sync heartbeat while playing
+  }, [videoSyncState.playing, videoSyncState.playbackRate, videoSyncState.playedSeconds, videoSyncState.timestamp, useYoutubeProxy, reloadYoutubeProxy]);
+
+  // Host-only heartbeat — keeps remote peers aligned without multi-client fights
   useEffect(() => {
     if (syncHeartbeatRef.current) clearInterval(syncHeartbeatRef.current);
-    if (!videoSyncState.playing || !videoSyncState.url) return;
+    if (!videoSyncState.playing || !videoSyncState.url || !canControl) return;
 
     syncHeartbeatRef.current = setInterval(() => {
       const t = typeof playerRef.current?.getCurrentTime === 'function'
         ? playerRef.current.getCurrentTime() : videoSyncState.playedSeconds;
-      broadcastVideoState({
-        ...videoSyncState,
-        playedSeconds: t,
-        timestamp: Date.now(),
-      });
+      patchVideoState({ playedSeconds: t });
     }, 8000);
 
     return () => {
       if (syncHeartbeatRef.current) clearInterval(syncHeartbeatRef.current);
     };
-  }, [videoSyncState.playing, videoSyncState.url, broadcastVideoState]);
+  }, [videoSyncState.playing, videoSyncState.url, canControl, patchVideoState]);
 
   useEffect(() => {
     if (videoSyncState.url) setShowSearch(false);
   }, [videoSyncState.url]);
 
   const handlePlay = () => {
+    if (!canControl) {
+      toast('Only the host can control playback');
+      return;
+    }
     setIsPlaying(true);
-    const t = typeof playerRef.current?.getCurrentTime === 'function' ? playerRef.current.getCurrentTime() : 0;
-    broadcastVideoState({ ...videoSyncState, playing: true, playedSeconds: t, timestamp: Date.now() });
+    const t = typeof playerRef.current?.getCurrentTime === 'function' ? playerRef.current.getCurrentTime() : videoSyncState.playedSeconds;
+    patchVideoState({ playing: true, playedSeconds: t });
   };
 
   const handlePause = () => {
+    if (!canControl) {
+      toast('Only the host can control playback');
+      return;
+    }
     setIsPlaying(false);
-    const t = typeof playerRef.current?.getCurrentTime === 'function' ? playerRef.current.getCurrentTime() : 0;
-    broadcastVideoState({ ...videoSyncState, playing: false, playedSeconds: t, timestamp: Date.now() });
+    const t = typeof playerRef.current?.getCurrentTime === 'function' ? playerRef.current.getCurrentTime() : videoSyncState.playedSeconds;
+    patchVideoState({ playing: false, playedSeconds: t });
   };
 
+  const syncPlayhead = useCallback((seconds: number) => {
+    patchVideoState({ playedSeconds: seconds });
+  }, [patchVideoState]);
+
+  /** User-initiated seek (scrub bar, keyboard) — reload dub proxy only here. */
   const handleSeek = (seconds: number) => {
+    if (!canControl) return;
     seekingRef.current = false;
-    broadcastVideoState({
-      ...videoSyncState,
-      playedSeconds: seconds,
-      timestamp: Date.now(),
-    });
+    syncPlayhead(seconds);
+    if (useYoutubeProxy) {
+      reloadYoutubeProxy(seconds, true);
+    }
+  };
+
+  const handleToggleDub = () => {
+    if (!isYoutube) {
+      toast('Live dub is available for YouTube videos');
+      return;
+    }
+    getSharedAudioContext().resume().catch(() => {});
+    if (isTranslateActive) {
+      onStopTranslate?.();
+      toast('Dubbing off');
+    } else {
+      onStartTranslate?.(inPlayerDubLang, true);
+    }
   };
 
   const handleVideoEnded = () => {
+    if (!canControl) return;
     playNextInQueue();
   };
+
+  useEffect(() => {
+    if (isTranslateActive) setInPlayerDubLang(translateTargetLanguage);
+  }, [isTranslateActive, translateTargetLanguage]);
+
+  const guardControl = useCallback((action: () => void) => {
+    if (!canControl) {
+      toast('Only the host can control playback');
+      return;
+    }
+    action();
+  }, [canControl]);
 
   const revealControls = useCallback(() => {
     setShowControls(true);
@@ -293,10 +406,10 @@ export const WatchPartyPlayer: React.FC<WatchPartyPlayerProps> = ({
           handleSeek(expectedPlayhead(videoSyncState) + 10);
           break;
         case 'KeyN':
-          if (e.shiftKey) { e.preventDefault(); playNextInQueue(); }
+          if (e.shiftKey) { e.preventDefault(); guardControl(playNextInQueue); }
           break;
         case 'KeyP':
-          if (e.shiftKey) { e.preventDefault(); playPreviousInQueue(); }
+          if (e.shiftKey) { e.preventDefault(); guardControl(playPreviousInQueue); }
           break;
         case 'KeyM':
           e.preventDefault();
@@ -310,17 +423,34 @@ export const WatchPartyPlayer: React.FC<WatchPartyPlayerProps> = ({
     };
     window.addEventListener('keydown', onKeyDown);
     return () => window.removeEventListener('keydown', onKeyDown);
-  }, [videoSyncState, isPlaying, showSearch, playNextInQueue, playPreviousInQueue, handlePlay, handlePause, handleSeek]);
+  }, [videoSyncState, isPlaying, showSearch, playNextInQueue, playPreviousInQueue, handlePlay, handlePause, handleSeek, guardControl]);
 
   const startVideo = (video: WatchPartyVideo, langCode: string | null) => {
+    if (!canControl) {
+      toast('Only the host can start videos');
+      return;
+    }
     addToQueue(video, true);
     setShowSearch(false);
     setSearchQuery('');
     setAllResults([]);
     setSelectedVideoForModal(null);
-    if (langCode) onStartTranslate?.(langCode);
-    else onStopTranslate?.();
+    if (langCode) {
+      pendingDubLangRef.current = langCode;
+    } else {
+      pendingDubLangRef.current = null;
+      onStopTranslate?.();
+    }
   };
+
+  // Start dub once the video URL is in state (after addToQueue) — keeps user-gesture AudioContext unlock from Play Dubbed click
+  useEffect(() => {
+    const lang = pendingDubLangRef.current;
+    if (!lang || !videoSyncState.url || !isYoutube) return;
+    pendingDubLangRef.current = null;
+    getSharedAudioContext().resume().catch(() => {});
+    onStartTranslate?.(lang, true);
+  }, [videoSyncState.url, isYoutube, onStartTranslate]);
 
   const doSearch = useCallback(async (q: string, isDefault = false) => {
     if (!q.trim() && !isDefault) { setAllResults([]); setSources({}); return; }
@@ -329,11 +459,12 @@ export const WatchPartyPlayer: React.FC<WatchPartyPlayerProps> = ({
     setFilter('all');
     try {
       const res = await fetch(apiUrl(`/api/search?q=${encodeURIComponent(queryToUse)}`));
+      if (!res.ok) throw new Error('Search failed');
       const data = await res.json();
       if (data.videos) setAllResults(data.videos);
       if (data.sources) setSources(data.sources);
-    } catch (e) {
-      console.error('Search failed:', e);
+    } catch {
+      toast.error('Video search failed — check your connection');
     } finally {
       setIsSearching(false);
     }
@@ -361,6 +492,9 @@ export const WatchPartyPlayer: React.FC<WatchPartyPlayerProps> = ({
   };
 
   const handlePlayWithTranslation = (video: VideoResult, langCode: string | null) => {
+    if (langCode) {
+      getSharedAudioContext().resume().catch(() => {});
+    }
     startVideo(videoFromResult(video), langCode);
   };
 
@@ -369,8 +503,16 @@ export const WatchPartyPlayer: React.FC<WatchPartyPlayerProps> = ({
     addToQueue(videoFromResult(video), false);
   };
 
+  const handlePlayQueueIndex = (index: number) => guardControl(() => playQueueIndex(index));
+  const handleRemoveFromQueue = (videoId: string) => guardControl(() => removeFromQueue(videoId));
+  const handleClearQueue = () => guardControl(clearQueue);
+
   const handleUrlSubmit = (e: React.FormEvent) => {
     e.preventDefault();
+    if (!canControl) {
+      toast('Only the host can start videos');
+      return;
+    }
     setUrlError('');
     const trimmed = urlInput.trim();
     if (!trimmed) return;
@@ -430,11 +572,47 @@ export const WatchPartyPlayer: React.FC<WatchPartyPlayerProps> = ({
           )}
           {isPlayerVisible && (
             <p className="text-[9px] text-zinc-600">
-              Synced · Space play · ←/→ seek · Q queue
+              {canControl ? 'You control playback' : 'Following host'}
+              {' · '}Space play · ←/→ seek · Q queue
             </p>
           )}
         </div>
         <div className="flex items-center gap-1.5">
+          {isPlayerVisible && isYoutube && (
+            <>
+              <div className="hidden items-center gap-1 sm:flex">
+                {isTranslateActive ? (
+                  <Button variant="ghost" size="sm" onClick={handleToggleDub}
+                    className="h-6 gap-1 px-2 text-[10px] text-brand-cyan hover:bg-brand-cyan/10">
+                    <Languages className="size-3" />
+                    Dub → {getLanguageLabel(translateTargetLanguage)}
+                    {translateState === 'connecting' && ' …'}
+                  </Button>
+                ) : (
+                  <>
+                    <select
+                      value={inPlayerDubLang}
+                      onChange={(e) => setInPlayerDubLang(e.target.value)}
+                      className="h-6 max-w-[88px] rounded-md border border-zinc-800 bg-zinc-900 px-1 text-[10px] text-zinc-300"
+                    >
+                      {LIVE_TRANSLATE_LANGUAGES.map((l) => (
+                        <option key={l.code} value={l.code}>{l.label}</option>
+                      ))}
+                    </select>
+                    <Button variant="ghost" size="sm" onClick={handleToggleDub}
+                      className="h-6 gap-1 px-2 text-[10px] text-zinc-300 hover:text-brand-cyan">
+                      <Mic2 className="size-3" /> Dub
+                    </Button>
+                  </>
+                )}
+              </div>
+              <Button variant="ghost" size="sm" onClick={handleToggleDub}
+                className={`h-6 gap-1 px-2 text-[10px] sm:hidden ${isTranslateActive ? 'text-brand-cyan' : 'text-zinc-400'}`}>
+                <Languages className="size-3" />
+                {isTranslateActive ? getLanguageLabel(translateTargetLanguage) : 'Dub'}
+              </Button>
+            </>
+          )}
           {isPlayerVisible && (
             <>
               <Button variant="ghost" size="sm" onClick={() => setQueueOpen((v) => !v)}
@@ -464,7 +642,7 @@ export const WatchPartyPlayer: React.FC<WatchPartyPlayerProps> = ({
                 : <Search className="size-3.5 text-zinc-500" />}
             </div>
             <Input autoFocus type="text"
-              placeholder="Search YouTube + DailyMotion..."
+              placeholder="Search YouTube..."
               value={searchQuery}
               onChange={handleQueryChange}
               className="h-9 w-full rounded-lg border-zinc-800 bg-zinc-900 pl-9 pr-8 text-xs text-zinc-200 placeholder:text-zinc-600 focus-visible:border-brand-cyan/50 focus-visible:ring-brand-cyan/40"
@@ -481,7 +659,7 @@ export const WatchPartyPlayer: React.FC<WatchPartyPlayerProps> = ({
           {/* Source filter tabs — shown only when results exist */}
           {hasResults && (
             <div className="flex items-center gap-1 overflow-x-auto px-3 pb-2 scrollbar-none sm:gap-0.5 sm:px-4">
-              {(['all', 'youtube', 'dailymotion'] as FilterSource[]).map(src => {
+              {(['all', 'youtube', ...(sources.dailymotion ? (['dailymotion'] as FilterSource[]) : [])] as FilterSource[]).map(src => {
                 const meta = src === 'all' ? null : SOURCE_META[src];
                 const count = src === 'all' ? allResults.length : (sources[src] ?? 0);
                 return (
@@ -659,9 +837,6 @@ export const WatchPartyPlayer: React.FC<WatchPartyPlayerProps> = ({
                 onEnded={handleVideoEnded}
                 onDuration={setDuration}
                 onProgress={(state) => {
-                  if (Math.abs(state.playedSeconds - lastPlayedRef.current) > 2) {
-                    handleSeek(state.playedSeconds);
-                  }
                   lastPlayedRef.current = state.playedSeconds;
                 }}
               />
@@ -671,7 +846,8 @@ export const WatchPartyPlayer: React.FC<WatchPartyPlayerProps> = ({
                 url={videoSyncState.url!}
                 playing={isPlaying}
                 controls={false}
-                muted={isYoutube}
+                muted={isYoutube ? isTranslateActive : false}
+                volume={isYoutube ? undefined : isVolumeMuted ? 0 : localVolume}
                 playbackRate={videoSyncState.playbackRate ?? DEFAULT_PLAYBACK_RATE}
                 width="100%"
                 height="100%"
@@ -680,18 +856,29 @@ export const WatchPartyPlayer: React.FC<WatchPartyPlayerProps> = ({
                 onEnded={handleVideoEnded}
                 onDuration={setDuration}
                 onProgress={(state: { playedSeconds: number }) => {
-                  if (Math.abs(state.playedSeconds - lastPlayedRef.current) > 2) {
-                    handleSeek(state.playedSeconds);
-                  }
                   lastPlayedRef.current = state.playedSeconds;
                 }}
+                onReady={() => {
+                  const internal = playerRef.current?.getInternalPlayer?.();
+                  if (internal && typeof internal.setVolume === 'function') {
+                    youtubePlayerRef.current = internal;
+                  }
+                }}
                 config={{
-                  youtube: { playerVars: { disablekb: 1, controls: 0 } },
+                  youtube: { playerVars: { disablekb: 1, controls: 0, enablejsapi: 1 } },
                   dailymotion: { params: { api: 1, 'endscreen-enable': false, origin: window.location.origin } },
                 }}
               />
             )}
-            <audio ref={audioRef} crossOrigin="anonymous" style={{ display: 'none' }} />
+            <audio ref={audioRef} crossOrigin="anonymous" playsInline preload="auto" style={{ display: 'none' }} />
+
+            {isTranslateActive && translateOutputLiveText && (
+              <div className="pointer-events-none absolute inset-x-0 bottom-24 z-10 px-4 sm:bottom-28">
+                <p className="mx-auto max-w-2xl truncate rounded-lg bg-black/75 px-3 py-1.5 text-center text-[11px] text-brand-cyan backdrop-blur-sm sm:text-xs">
+                  {translateOutputLiveText}
+                </p>
+              </div>
+            )}
 
             <WatchPartyControls
               videoSyncState={videoSyncState}
@@ -702,13 +889,13 @@ export const WatchPartyPlayer: React.FC<WatchPartyPlayerProps> = ({
               showControls={showControls}
               onTogglePlay={() => (isPlaying ? handlePause() : handlePlay())}
               onSeek={handleSeek}
-              onPrevious={playPreviousInQueue}
-              onNext={playNextInQueue}
+              onPrevious={() => guardControl(playPreviousInQueue)}
+              onNext={() => guardControl(playNextInQueue)}
               onVolumeChange={(v) => { setLocalVolume(v); setIsVolumeMuted(v === 0); }}
               onToggleMute={() => setIsVolumeMuted((v) => !v)}
-              onPlaybackRateChange={(rate) => patchVideoState({ playbackRate: rate, timestamp: Date.now() })}
-              onToggleLoop={() => patchVideoState({ loopQueue: !videoSyncState.loopQueue })}
-              onToggleShuffle={() => patchVideoState({ shuffle: !videoSyncState.shuffle })}
+              onPlaybackRateChange={(rate) => canControl && patchVideoState({ playbackRate: rate })}
+              onToggleLoop={() => canControl && patchVideoState({ loopQueue: !videoSyncState.loopQueue })}
+              onToggleShuffle={() => canControl && patchVideoState({ shuffle: !videoSyncState.shuffle })}
               onToggleQueue={() => setQueueOpen((v) => !v)}
               queueOpen={queueOpen}
             />
@@ -716,9 +903,10 @@ export const WatchPartyPlayer: React.FC<WatchPartyPlayerProps> = ({
             {queueOpen && (
               <WatchPartyQueue
                 videoSyncState={videoSyncState}
-                onPlayIndex={playQueueIndex}
-                onRemove={removeFromQueue}
-                onClear={clearQueue}
+                canControl={canControl}
+                onPlayIndex={handlePlayQueueIndex}
+                onRemove={handleRemoveFromQueue}
+                onClear={handleClearQueue}
                 onClose={() => setQueueOpen(false)}
               />
             )}

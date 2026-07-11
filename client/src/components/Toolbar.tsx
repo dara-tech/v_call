@@ -10,6 +10,7 @@ import {
   Monitor,
   PhoneOff,
   Popcorn,
+  Globe2,
   Copy,
   Check,
   Languages,
@@ -25,6 +26,7 @@ interface ToolbarProps {
   showChat?: boolean;
   showStats: boolean;
   showWatchParty: boolean;
+  showTvGarden?: boolean;
   unreadCount?: number;
   isTranslateActive?: boolean;
   translateTargetLanguage?: string;
@@ -37,6 +39,7 @@ interface ToolbarProps {
   onToggleChat?: () => void;
   onToggleStats: () => void;
   onToggleWatchParty: () => void;
+  onToggleTvGarden?: () => void;
   onLeaveCall: () => void;
   onCopyInvite?: () => void;
   isCopied?: boolean;
@@ -50,6 +53,7 @@ export const Toolbar: React.FC<ToolbarProps> = ({
   isCameraOff,
   isScreenSharing,
   showWatchParty,
+  showTvGarden = false,
   isTranslateActive = false,
   translateTargetLanguage = 'km',
   onStartLiveTranslate,
@@ -58,6 +62,7 @@ export const Toolbar: React.FC<ToolbarProps> = ({
   onToggleCamera,
   onToggleScreenShare,
   onToggleWatchParty,
+  onToggleTvGarden,
   onLeaveCall,
   onCopyInvite,
   isCopied,
@@ -249,6 +254,26 @@ export const Toolbar: React.FC<ToolbarProps> = ({
             <p>{showWatchParty ? 'Close Watch Party' : 'Open Watch Party'}</p>
           </TooltipContent>
         </Tooltip>
+
+        {/* TV Garden — live global channels */}
+        {onToggleTvGarden && (
+          <Tooltip>
+            <TooltipTrigger asChild>
+              <Button
+                type="button"
+                variant={showTvGarden ? 'secondary' : 'outline'}
+                size="icon-sm"
+                className={`shrink-0 snap-center size-[2.25rem] sm:size-[2.75rem] rounded-full transition-all border-white/5 shadow-sm ${showTvGarden ? 'text-brand-cyan bg-brand-cyan/20 border-brand-cyan/30' : 'hover:bg-white/10'}`}
+                onClick={onToggleTvGarden}
+              >
+                <Globe2 className="size-3.5 sm:size-4" />
+              </Button>
+            </TooltipTrigger>
+            <TooltipContent side="top" className="bg-zinc-950 text-white border-white/10 text-xs hidden sm:block">
+              <p>{showTvGarden ? 'Close TV Garden' : 'Open TV Garden'}</p>
+            </TooltipContent>
+          </Tooltip>
+        )}
 
         {/* Copy Invite Link */}
         {onCopyInvite && (

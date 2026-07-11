@@ -43,13 +43,12 @@ export function buildLiveTranslateSetupPayload(
 ) {
   const setupPayload: Record<string, unknown> = {
     model: GEMINI_LIVE_TRANSLATE_MODEL,
-    // WebSocket API: transcription fields belong on setup root, not inside generationConfig.
-    inputAudioTranscription: {},
-    outputAudioTranscription: {},
     generationConfig: {
       responseModalities: ['AUDIO'],
+      // Transcription fields are documented but rejected by the Bidi WS API as of 2026-07;
+      // omit them so setup completes and translated audio can stream.
       translationConfig: {
-        targetLanguageCode,
+        targetLanguageCode: normalizeTranslateLanguageCode(targetLanguageCode),
         echoTargetLanguage: true,
       },
     },
@@ -60,6 +59,22 @@ export function buildLiveTranslateSetupPayload(
   }
 
   return setupPayload;
+}
+
+/** Map UI codes to BCP-47 codes expected by Gemini Live Translate. */
+function normalizeTranslateLanguageCode(code: string): string {
+  const map: Record<string, string> = {
+    km: 'km',
+    en: 'en',
+    th: 'th',
+    vi: 'vi',
+    'zh-Hans': 'zh-CN',
+    ja: 'ja',
+    ko: 'ko',
+    fr: 'fr',
+    es: 'es',
+  };
+  return map[code] ?? code;
 }
 
 export function buildLiveSetupPayload(personaId: AIPersona, sessionHandle: string | null) {

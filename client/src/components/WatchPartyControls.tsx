@@ -1,4 +1,4 @@
-import React from 'react';
+import React, { useState } from 'react';
 import { Button } from '@/components/ui/button';
 import {
   Play, Pause, SkipBack, SkipForward, Volume2, VolumeX,
@@ -49,9 +49,17 @@ export const WatchPartyControls: React.FC<WatchPartyControlsProps> = ({
   queueOpen,
 }) => {
   const currentTime = expectedPlayhead(videoSyncState);
-  const progress = duration > 0 ? Math.min(100, (currentTime / duration) * 100) : 0;
+  const [scrubbing, setScrubbing] = useState(false);
+  const [scrubTime, setScrubTime] = useState(0);
+  const displayTime = scrubbing ? scrubTime : currentTime;
+  const progress = duration > 0 ? Math.min(100, (displayTime / duration) * 100) : 0;
   const playbackRate = videoSyncState.playbackRate ?? DEFAULT_PLAYBACK_RATE;
   const queueLength = videoSyncState.queue?.length ?? 0;
+
+  const commitScrub = () => {
+    setScrubbing(false);
+    onSeek(scrubTime);
+  };
 
   return (
     <div
@@ -59,24 +67,32 @@ export const WatchPartyControls: React.FC<WatchPartyControlsProps> = ({
         showControls ? 'opacity-100' : 'pointer-events-none opacity-0'
       }`}
     >
-      {/* Progress bar */}
       <div className="mb-3 group/progress">
         <input
           type="range"
           min={0}
           max={duration || 100}
           step={0.1}
-          value={Math.min(currentTime, duration || 0)}
-          onChange={(e) => onSeek(Number(e.target.value))}
+          value={Math.min(displayTime, duration || 0)}
+          onPointerDown={() => {
+            setScrubbing(true);
+            setScrubTime(Math.min(currentTime, duration || 0));
+          }}
+          onChange={(e) => {
+            const t = Number(e.target.value);
+            if (scrubbing) setScrubTime(t);
+            else onSeek(t);
+          }}
+          onPointerUp={commitScrub}
+          onPointerLeave={() => { if (scrubbing) commitScrub(); }}
           className="h-1 w-full cursor-pointer appearance-none rounded-full bg-white/20 accent-brand-cyan group-hover/progress:h-1.5 transition-all [&::-webkit-slider-thumb]:size-3 [&::-webkit-slider-thumb]:appearance-none [&::-webkit-slider-thumb]:rounded-full [&::-webkit-slider-thumb]:bg-brand-cyan"
         />
         <div className="mt-1 flex items-center justify-between text-[10px] font-medium tabular-nums text-zinc-400">
-          <span>{formatTime(currentTime)}</span>
+          <span>{formatTime(displayTime)}</span>
           <span>{formatTime(duration)}</span>
         </div>
       </div>
 
-      {/* Now playing + transport */}
       <div className="flex items-center gap-2 sm:gap-3">
         {videoSyncState.thumbnail && (
           <img
@@ -109,8 +125,7 @@ export const WatchPartyControls: React.FC<WatchPartyControlsProps> = ({
           </Button>
         </div>
 
-        {/* Volume — local only */}
-        <div className="hidden items-center gap-1.5 md:flex">
+        <div className="flex items-center gap-1.5">
           <Button variant="ghost" size="icon-sm" onClick={onToggleMute}
             className="size-8 text-zinc-400 hover:text-white">
             {isMuted || localVolume === 0 ? <VolumeX className="size-4" /> : <Volume2 className="size-4" />}
@@ -122,12 +137,11 @@ export const WatchPartyControls: React.FC<WatchPartyControlsProps> = ({
             step={0.05}
             value={isMuted ? 0 : localVolume}
             onChange={(e) => onVolumeChange(Number(e.target.value))}
-            className="h-1 w-16 cursor-pointer appearance-none rounded-full bg-white/20 accent-brand-cyan"
+            className="hidden h-1 w-14 cursor-pointer appearance-none rounded-full bg-white/20 accent-brand-cyan sm:block"
           />
         </div>
 
-        {/* Playback speed — synced */}
-        <div className="relative hidden lg:block">
+        <div className="relative hidden sm:block">
           <select
             value={playbackRate}
             onChange={(e) => onPlaybackRateChange(Number(e.target.value))}
@@ -159,7 +173,6 @@ export const WatchPartyControls: React.FC<WatchPartyControlsProps> = ({
         </Button>
       </div>
 
-      {/* Mobile progress indicator */}
       <div className="mt-2 h-0.5 overflow-hidden rounded-full bg-white/10 sm:hidden">
         <div className="h-full bg-brand-cyan transition-all" style={{ width: `${progress}%` }} />
       </div>
