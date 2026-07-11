@@ -1,20 +1,30 @@
 import React, { useRef, useEffect, useState, useCallback } from 'react';
 import ReactPlayerImport from 'react-player';
 import { DailyMotionSyncPlayer } from './DailyMotionSyncPlayer';
+import { WatchPartyControls } from './WatchPartyControls';
+import { WatchPartyQueue } from './WatchPartyQueue';
 
 const ReactPlayer = (ReactPlayerImport as any).default || ReactPlayerImport;
 import { Button } from '@/components/ui/button';
 import { Input } from '@/components/ui/input';
-import { X, Search, RotateCcw, Loader2, Clock, PlayCircle, Link2, ChevronRight } from 'lucide-react';
-import type { VideoSyncState } from '../hooks/useWebRTC';
+import { X, Search, RotateCcw, Loader2, Clock, PlayCircle, Link2, ChevronRight, ListPlus, Play } from 'lucide-react';
+import type { VideoSyncState, WatchPartyVideo } from '../hooks/types';
 import { apiUrl } from '../lib/serverConfig';
 import { Dialog, DialogContent, DialogHeader, DialogTitle, DialogDescription } from '@/components/ui/dialog';
 import { LIVE_TRANSLATE_LANGUAGES } from '../lib/ai/liveConfig';
 import { getSharedAudioContext } from '../lib/sharedAudioContext';
+import { DEFAULT_PLAYBACK_RATE, expectedPlayhead, videoFromResult } from '../lib/watchPartyUtils';
 
 interface WatchPartyPlayerProps {
   videoSyncState: VideoSyncState;
   broadcastVideoState: (state: VideoSyncState) => void;
+  patchVideoState: (patch: Partial<VideoSyncState>) => void;
+  addToQueue: (video: WatchPartyVideo, playNow?: boolean) => void;
+  removeFromQueue: (videoId: string) => void;
+  playQueueIndex: (index: number) => void;
+  playNextInQueue: () => void;
+  playPreviousInQueue: () => void;
+  clearQueue: () => void;
   onClose: () => void;
   onAudioStreamChange?: (stream: MediaStream | null) => void;
   onStartTranslate?: (langCode: string) => void;
@@ -50,6 +60,13 @@ const PLATFORMS = [
 export const WatchPartyPlayer: React.FC<WatchPartyPlayerProps> = ({
   videoSyncState,
   broadcastVideoState,
+  patchVideoState,
+  addToQueue,
+  removeFromQueue,
+  playQueueIndex,
+  playNextInQueue,
+  playPreviousInQueue,
+  clearQueue,
   onClose,
   onAudioStreamChange,
   onStartTranslate,
@@ -70,9 +87,16 @@ export const WatchPartyPlayer: React.FC<WatchPartyPlayerProps> = ({
   const [urlError, setUrlError] = useState('');
   const [isPlaying, setIsPlaying] = useState(false);
   const [hoveredId, setHoveredId] = useState<string | null>(null);
+  const [duration, setDuration] = useState(0);
+  const [localVolume, setLocalVolume] = useState(1);
+  const [isVolumeMuted, setIsVolumeMuted] = useState(false);
+  const [showControls, setShowControls] = useState(true);
+  const [queueOpen, setQueueOpen] = useState(false);
   const seekingRef = useRef(false);
   const debounceRef = useRef<ReturnType<typeof setTimeout> | null>(null);
   const lastPlayedRef = useRef(0);
+  const controlsTimeoutRef = useRef<ReturnType<typeof setTimeout> | null>(null);
+  const syncHeartbeatRef = useRef<ReturnType<typeof setInterval> | null>(null);
 
   const audioRef = useRef<HTMLAudioElement>(null);
   const audioContextRef = useRef<AudioContext | null>(null);
@@ -164,16 +188,14 @@ export const WatchPartyPlayer: React.FC<WatchPartyPlayerProps> = ({
   useEffect(() => {
     setIsPlaying(videoSyncState.playing);
     const audioEl = audioRef.current;
-
-    const expectedTime = videoSyncState.playing
-      ? videoSyncState.playedSeconds + (Date.now() - videoSyncState.timestamp) / 1000
-      : videoSyncState.playedSeconds;
+    const expectedTime = expectedPlayhead(videoSyncState);
+    const rate = videoSyncState.playbackRate ?? DEFAULT_PLAYBACK_RATE;
 
     if (playerRef.current && !seekingRef.current) {
       const cur = typeof playerRef.current.getCurrentTime === 'function'
         ? playerRef.current.getCurrentTime() : 0;
 
-      if (Math.abs(cur - expectedTime) > 2) {
+      if (Math.abs(cur - expectedTime) > 1.5) {
         if (typeof playerRef.current.seekTo === 'function') {
           playerRef.current.seekTo(expectedTime, 'seconds');
           lastPlayedRef.current = expectedTime;
@@ -182,16 +204,38 @@ export const WatchPartyPlayer: React.FC<WatchPartyPlayerProps> = ({
     }
 
     if (audioEl) {
+      audioEl.playbackRate = rate;
       if (videoSyncState.playing) {
         audioEl.play().catch(() => {});
       } else {
         audioEl.pause();
       }
-      if (Math.abs(audioEl.currentTime - expectedTime) > 2) {
+      if (Math.abs(audioEl.currentTime - expectedTime) > 1.5) {
         audioEl.currentTime = expectedTime;
       }
+      audioEl.volume = isVolumeMuted ? 0 : localVolume;
     }
-  }, [videoSyncState, isYoutube]);
+  }, [videoSyncState, isYoutube, isVolumeMuted, localVolume]);
+
+  // Periodic sync heartbeat while playing
+  useEffect(() => {
+    if (syncHeartbeatRef.current) clearInterval(syncHeartbeatRef.current);
+    if (!videoSyncState.playing || !videoSyncState.url) return;
+
+    syncHeartbeatRef.current = setInterval(() => {
+      const t = typeof playerRef.current?.getCurrentTime === 'function'
+        ? playerRef.current.getCurrentTime() : videoSyncState.playedSeconds;
+      broadcastVideoState({
+        ...videoSyncState,
+        playedSeconds: t,
+        timestamp: Date.now(),
+      });
+    }, 8000);
+
+    return () => {
+      if (syncHeartbeatRef.current) clearInterval(syncHeartbeatRef.current);
+    };
+  }, [videoSyncState.playing, videoSyncState.url, broadcastVideoState]);
 
   useEffect(() => {
     if (videoSyncState.url) setShowSearch(false);
@@ -211,7 +255,71 @@ export const WatchPartyPlayer: React.FC<WatchPartyPlayerProps> = ({
 
   const handleSeek = (seconds: number) => {
     seekingRef.current = false;
-    broadcastVideoState({ ...videoSyncState, playedSeconds: seconds, timestamp: Date.now() });
+    broadcastVideoState({
+      ...videoSyncState,
+      playedSeconds: seconds,
+      timestamp: Date.now(),
+    });
+  };
+
+  const handleVideoEnded = () => {
+    playNextInQueue();
+  };
+
+  const revealControls = useCallback(() => {
+    setShowControls(true);
+    if (controlsTimeoutRef.current) clearTimeout(controlsTimeoutRef.current);
+    controlsTimeoutRef.current = setTimeout(() => setShowControls(false), 3500);
+  }, []);
+
+  useEffect(() => {
+    const onKeyDown = (e: KeyboardEvent) => {
+      if (!videoSyncState.url || showSearch) return;
+      const target = e.target as HTMLElement;
+      if (target.tagName === 'INPUT' || target.tagName === 'TEXTAREA' || target.tagName === 'SELECT') return;
+
+      switch (e.code) {
+        case 'Space':
+          e.preventDefault();
+          if (isPlaying) handlePause();
+          else handlePlay();
+          break;
+        case 'ArrowLeft':
+          e.preventDefault();
+          handleSeek(Math.max(0, expectedPlayhead(videoSyncState) - 10));
+          break;
+        case 'ArrowRight':
+          e.preventDefault();
+          handleSeek(expectedPlayhead(videoSyncState) + 10);
+          break;
+        case 'KeyN':
+          if (e.shiftKey) { e.preventDefault(); playNextInQueue(); }
+          break;
+        case 'KeyP':
+          if (e.shiftKey) { e.preventDefault(); playPreviousInQueue(); }
+          break;
+        case 'KeyM':
+          e.preventDefault();
+          setIsVolumeMuted((v) => !v);
+          break;
+        case 'KeyQ':
+          e.preventDefault();
+          setQueueOpen((v) => !v);
+          break;
+      }
+    };
+    window.addEventListener('keydown', onKeyDown);
+    return () => window.removeEventListener('keydown', onKeyDown);
+  }, [videoSyncState, isPlaying, showSearch, playNextInQueue, playPreviousInQueue, handlePlay, handlePause, handleSeek]);
+
+  const startVideo = (video: WatchPartyVideo, langCode: string | null) => {
+    addToQueue(video, true);
+    setShowSearch(false);
+    setSearchQuery('');
+    setAllResults([]);
+    setSelectedVideoForModal(null);
+    if (langCode) onStartTranslate?.(langCode);
+    else onStopTranslate?.();
   };
 
   const doSearch = useCallback(async (q: string, isDefault = false) => {
@@ -253,17 +361,12 @@ export const WatchPartyPlayer: React.FC<WatchPartyPlayerProps> = ({
   };
 
   const handlePlayWithTranslation = (video: VideoResult, langCode: string | null) => {
-    broadcastVideoState({ url: video.url, playing: true, playedSeconds: 0, timestamp: Date.now() });
-    setShowSearch(false);
-    setSearchQuery('');
-    setAllResults([]);
-    setSelectedVideoForModal(null);
+    startVideo(videoFromResult(video), langCode);
+  };
 
-    if (langCode) {
-      onStartTranslate?.(langCode);
-    } else {
-      onStopTranslate?.();
-    }
+  const handleAddToQueue = (video: VideoResult, e?: React.MouseEvent) => {
+    e?.stopPropagation();
+    addToQueue(videoFromResult(video), false);
   };
 
   const handleUrlSubmit = (e: React.FormEvent) => {
@@ -276,7 +379,12 @@ export const WatchPartyPlayer: React.FC<WatchPartyPlayerProps> = ({
       setUrlError('Unsupported. Try Vimeo, Twitch, Facebook, Streamable or a .mp4 link.');
       return;
     }
-    broadcastVideoState({ url: trimmed, playing: true, playedSeconds: 0, timestamp: Date.now() });
+    addToQueue({
+      id: `url-${Date.now()}`,
+      url: trimmed,
+      title: 'Custom link',
+      source: 'url',
+    }, true);
     setShowSearch(false);
     setUrlInput('');
     setShowUrlInput(false);
@@ -313,13 +421,31 @@ export const WatchPartyPlayer: React.FC<WatchPartyPlayerProps> = ({
     <div className="flex flex-col h-full w-full bg-zinc-950 overflow-hidden">
 
       {/* ── Header ── */}
-      <div className="flex h-10 shrink-0 items-center justify-end border-b border-zinc-900 px-3 sm:h-11 sm:px-4">
+      <div className="flex h-10 shrink-0 items-center justify-between border-b border-zinc-900 px-3 sm:h-11 sm:px-4">
+        <div className="min-w-0 flex-1">
+          {isPlayerVisible && videoSyncState.title && (
+            <p className="truncate text-[11px] font-semibold text-zinc-300 sm:text-xs">
+              {videoSyncState.title}
+            </p>
+          )}
+          {isPlayerVisible && (
+            <p className="text-[9px] text-zinc-600">
+              Synced · Space play · ←/→ seek · Q queue
+            </p>
+          )}
+        </div>
         <div className="flex items-center gap-1.5">
           {isPlayerVisible && (
-            <Button variant="ghost" size="sm" onClick={handleReset}
-              className="h-6 px-2 text-[10px] text-zinc-400 hover:text-brand-cyan hover:bg-brand-cyan/10 gap-1">
-              <RotateCcw className="size-3" /> Change
-            </Button>
+            <>
+              <Button variant="ghost" size="sm" onClick={() => setQueueOpen((v) => !v)}
+                className={`h-6 px-2 text-[10px] gap-1 ${queueOpen ? 'text-brand-orange' : 'text-zinc-400 hover:text-white'}`}>
+                Queue {(videoSyncState.queue?.length ?? 0) > 0 && `(${videoSyncState.queue!.length})`}
+              </Button>
+              <Button variant="ghost" size="sm" onClick={handleReset}
+                className="h-6 px-2 text-[10px] text-zinc-400 hover:text-brand-cyan hover:bg-brand-cyan/10 gap-1">
+                <RotateCcw className="size-3" /> Change
+              </Button>
+            </>
           )}
           <Button variant="ghost" size="icon-sm" onClick={onClose}
             className="size-6 text-zinc-500 hover:text-white hover:bg-zinc-800 rounded-md">
@@ -446,42 +572,51 @@ export const WatchPartyPlayer: React.FC<WatchPartyPlayerProps> = ({
             <div className="grid grid-cols-1 gap-3 p-3 sm:grid-cols-2 sm:gap-4 sm:p-4 md:grid-cols-3 lg:grid-cols-4">
               {filteredResults.map((video) => {
                 const meta = SOURCE_META[video.source];
+                const cardId = `${video.source}-${video.id}`;
                 return (
-                  <button key={`${video.source}-${video.id}`}
-                    onClick={() => handleSelectVideo(video)}
-                    onMouseEnter={() => setHoveredId(`${video.source}-${video.id}`)}
+                  <div
+                    key={cardId}
+                    onMouseEnter={() => setHoveredId(cardId)}
                     onMouseLeave={() => setHoveredId(null)}
-                    className="relative w-full flex flex-col gap-2.5 group text-left focus:outline-none rounded-2xl p-2 bg-transparent hover:bg-zinc-900/40 border border-transparent hover:border-white/10 hover:shadow-[0_8px_32px_rgba(34,211,238,0.05)] transition-all duration-300"
+                    className="relative flex w-full flex-col gap-2.5 rounded-2xl border border-transparent p-2 text-left transition-all duration-300 hover:border-white/10 hover:bg-zinc-900/40 hover:shadow-[0_8px_32px_rgba(34,211,238,0.05)]"
                   >
-                    {/* Thumbnail */}
-                    <div className="relative w-full aspect-video rounded-lg overflow-hidden bg-zinc-800">
-                      <img src={video.thumbnail} alt={video.title}
-                        className="w-full h-full object-cover transition-transform duration-300 group-hover:scale-105" />
-                      {video.duration && (
-                        <span className="absolute bottom-1.5 right-1.5 flex items-center gap-1 bg-black/80 px-1.5 py-0.5 rounded text-[10px] font-medium tracking-wide text-white">
-                          <Clock className="size-2.5 opacity-70" />{video.duration}
+                    <button type="button" onClick={() => handleSelectVideo(video)} className="flex flex-col gap-2.5 text-left focus:outline-none">
+                      <div className="relative aspect-video w-full overflow-hidden rounded-lg bg-zinc-800">
+                        <img src={video.thumbnail} alt={video.title}
+                          className="h-full w-full object-cover transition-transform duration-300 group-hover:scale-105" />
+                        {video.duration && (
+                          <span className="absolute bottom-1.5 right-1.5 flex items-center gap-1 rounded bg-black/80 px-1.5 py-0.5 text-[10px] font-medium tracking-wide text-white">
+                            <Clock className="size-2.5 opacity-70" />{video.duration}
+                          </span>
+                        )}
+                        <span className={`absolute left-1.5 top-1.5 rounded px-1.5 py-0.5 text-[9px] font-bold uppercase tracking-wider bg-black/80 ${meta.color}`}>
+                          {video.source === 'youtube' ? 'YouTube' : 'DailyMotion'}
                         </span>
-                      )}
-                      {/* Source badge on thumbnail */}
-                      <span className={`absolute top-1.5 left-1.5 px-1.5 py-0.5 rounded text-[9px] font-bold bg-black/80 uppercase tracking-wider ${meta.color}`}>
-                        {video.source === 'youtube' ? 'YouTube' : 'DailyMotion'}
-                      </span>
-                      <div className={`absolute inset-0 bg-brand-cyan/20 flex items-center justify-center transition-opacity duration-200 ${hoveredId === `${video.source}-${video.id}` ? 'opacity-100' : 'opacity-0'}`}>
-                        <PlayCircle className="size-12 text-brand-cyan drop-shadow-xl" strokeWidth={1.5} />
+                        <div className={`absolute inset-0 flex items-center justify-center bg-brand-cyan/20 transition-opacity duration-200 ${hoveredId === cardId ? 'opacity-100' : 'opacity-0'}`}>
+                          <PlayCircle className="size-12 text-brand-cyan drop-shadow-xl" strokeWidth={1.5} />
+                        </div>
                       </div>
-                    </div>
-
-                    {/* Info */}
-                    <div className="flex flex-col px-1 w-full">
-                      <p className="text-[13px] font-semibold text-zinc-100 line-clamp-2 leading-tight group-hover:text-brand-cyan transition-colors mb-1.5">
-                        {video.title}
-                      </p>
-                      <div className="flex items-center gap-1.5">
-                        <span className={`size-2 rounded-full shrink-0 ${meta.dot}`} />
-                        <p className="text-[11px] font-medium text-zinc-400 truncate">{video.author}</p>
+                      <div className="flex w-full flex-col px-1">
+                        <p className="mb-1.5 line-clamp-2 text-[13px] font-semibold leading-tight text-zinc-100">
+                          {video.title}
+                        </p>
+                        <div className="flex items-center gap-1.5">
+                          <span className={`size-2 shrink-0 rounded-full ${meta.dot}`} />
+                          <p className="truncate text-[11px] font-medium text-zinc-400">{video.author}</p>
+                        </div>
                       </div>
+                    </button>
+                    <div className="flex gap-1.5 px-1">
+                      <Button type="button" size="sm" onClick={() => handlePlayWithTranslation(video, null)}
+                        className="h-7 flex-1 gap-1 bg-brand-cyan text-[10px] font-bold text-zinc-950 hover:bg-brand-cyan/85">
+                        <Play className="size-3" /> Play
+                      </Button>
+                      <Button type="button" size="sm" variant="outline" onClick={(e) => handleAddToQueue(video, e)}
+                        className="h-7 gap-1 border-zinc-700 text-[10px] text-zinc-300 hover:bg-zinc-800">
+                        <ListPlus className="size-3" /> Queue
+                      </Button>
                     </div>
-                  </button>
+                  </div>
                 );
               })}
             </div>
@@ -508,14 +643,21 @@ export const WatchPartyPlayer: React.FC<WatchPartyPlayerProps> = ({
 
         {/* Player */}
         {isPlayerVisible && (
-          <div className="absolute inset-0 bg-black shadow-2xl">
+          <div
+            className="absolute inset-0 bg-black shadow-2xl"
+            onMouseMove={revealControls}
+            onClick={revealControls}
+          >
             {isDailyMotion && dmVideoId ? (
               <DailyMotionSyncPlayer
                 ref={playerRef}
                 videoId={dmVideoId}
                 playing={isPlaying}
+                playbackRate={videoSyncState.playbackRate ?? DEFAULT_PLAYBACK_RATE}
                 onPlay={handlePlay}
                 onPause={handlePause}
+                onEnded={handleVideoEnded}
+                onDuration={setDuration}
                 onProgress={(state) => {
                   if (Math.abs(state.playedSeconds - lastPlayedRef.current) > 2) {
                     handleSeek(state.playedSeconds);
@@ -528,29 +670,58 @@ export const WatchPartyPlayer: React.FC<WatchPartyPlayerProps> = ({
                 ref={playerRef}
                 url={videoSyncState.url!}
                 playing={isPlaying}
-                controls={true}
+                controls={false}
                 muted={isYoutube}
+                playbackRate={videoSyncState.playbackRate ?? DEFAULT_PLAYBACK_RATE}
                 width="100%"
                 height="100%"
                 onPlay={handlePlay}
                 onPause={handlePause}
+                onEnded={handleVideoEnded}
+                onDuration={setDuration}
                 onProgress={(state: { playedSeconds: number }) => {
                   if (Math.abs(state.playedSeconds - lastPlayedRef.current) > 2) {
                     handleSeek(state.playedSeconds);
                   }
                   lastPlayedRef.current = state.playedSeconds;
                 }}
-                config={{ 
-                  youtube: { playerVars: { disablekb: 1 } },
-                  dailymotion: { params: { api: 1, 'endscreen-enable': false, origin: window.location.origin } }
+                config={{
+                  youtube: { playerVars: { disablekb: 1, controls: 0 } },
+                  dailymotion: { params: { api: 1, 'endscreen-enable': false, origin: window.location.origin } },
                 }}
               />
             )}
-            <audio
-              ref={audioRef}
-              crossOrigin="anonymous"
-              style={{ display: 'none' }}
+            <audio ref={audioRef} crossOrigin="anonymous" style={{ display: 'none' }} />
+
+            <WatchPartyControls
+              videoSyncState={videoSyncState}
+              isPlaying={isPlaying}
+              duration={duration}
+              localVolume={localVolume}
+              isMuted={isVolumeMuted}
+              showControls={showControls}
+              onTogglePlay={() => (isPlaying ? handlePause() : handlePlay())}
+              onSeek={handleSeek}
+              onPrevious={playPreviousInQueue}
+              onNext={playNextInQueue}
+              onVolumeChange={(v) => { setLocalVolume(v); setIsVolumeMuted(v === 0); }}
+              onToggleMute={() => setIsVolumeMuted((v) => !v)}
+              onPlaybackRateChange={(rate) => patchVideoState({ playbackRate: rate, timestamp: Date.now() })}
+              onToggleLoop={() => patchVideoState({ loopQueue: !videoSyncState.loopQueue })}
+              onToggleShuffle={() => patchVideoState({ shuffle: !videoSyncState.shuffle })}
+              onToggleQueue={() => setQueueOpen((v) => !v)}
+              queueOpen={queueOpen}
             />
+
+            {queueOpen && (
+              <WatchPartyQueue
+                videoSyncState={videoSyncState}
+                onPlayIndex={playQueueIndex}
+                onRemove={removeFromQueue}
+                onClear={clearQueue}
+                onClose={() => setQueueOpen(false)}
+              />
+            )}
           </div>
         )}
 
@@ -584,12 +755,20 @@ export const WatchPartyPlayer: React.FC<WatchPartyPlayerProps> = ({
               </div>
 
               <div className="flex flex-col gap-3">
-                {/* Play Original */}
                 <button
                   onClick={() => handlePlayWithTranslation(selectedVideoForModal, null)}
-                  className="w-full h-11 bg-zinc-900 border border-zinc-800 hover:bg-zinc-800 text-zinc-200 font-semibold text-xs rounded-xl flex items-center justify-center gap-2 cursor-pointer transition-colors active:scale-95"
+                  className="flex h-11 w-full cursor-pointer items-center justify-center gap-2 rounded-xl border border-zinc-800 bg-zinc-900 text-xs font-semibold text-zinc-200 transition-colors hover:bg-zinc-800 active:scale-95"
                 >
-                  Play Original (No Translation)
+                  <Play className="size-4" /> Play Now
+                </button>
+                <button
+                  onClick={() => {
+                    handleAddToQueue(selectedVideoForModal);
+                    setSelectedVideoForModal(null);
+                  }}
+                  className="flex h-11 w-full cursor-pointer items-center justify-center gap-2 rounded-xl border border-zinc-800 bg-zinc-900/60 text-xs font-semibold text-zinc-300 transition-colors hover:bg-zinc-800 active:scale-95"
+                >
+                  <ListPlus className="size-4" /> Add to Queue
                 </button>
 
                 <div className="flex items-center my-1">

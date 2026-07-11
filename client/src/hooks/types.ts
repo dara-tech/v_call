@@ -21,11 +21,29 @@ export interface ChatMessage {
   timestamp: Date;
 }
 
+export interface WatchPartyVideo {
+  id: string;
+  url: string;
+  title: string;
+  thumbnail?: string;
+  author?: string;
+  source?: string;
+  duration?: string;
+}
+
 export interface VideoSyncState {
   url: string | null;
   playing: boolean;
   playedSeconds: number;
   timestamp: number;
+  playbackRate?: number;
+  title?: string | null;
+  thumbnail?: string | null;
+  author?: string | null;
+  queue?: WatchPartyVideo[];
+  queueIndex?: number;
+  loopQueue?: boolean;
+  shuffle?: boolean;
 }
 
 export interface CallStats {

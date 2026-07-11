@@ -1,5 +1,6 @@
 import { useState, useCallback, type MutableRefObject } from 'react';
-import type { ChatMessage, VideoSyncState, PeerState, PeerInfo } from './types';
+import type { ChatMessage, VideoSyncState, PeerState, PeerInfo, WatchPartyVideo } from './types';
+import { createEmptyVideoSyncState, getNextQueueIndex, getPreviousQueueIndex, playVideoAtIndex } from '../lib/watchPartyUtils';
 import { AIParticipant } from '../lib/AIParticipant';
 import { apiUrl } from '../lib/serverConfig';
 
@@ -17,7 +18,7 @@ interface UseChatDataChannelProps {
 
 export const useChatDataChannel = ({ userName, peersRef, hostedVirtualPeersRef, syncPeersState }: UseChatDataChannelProps) => {
   const [chatMessages, setChatMessages] = useState<ChatMessage[]>([]);
-  const [videoSyncState, setVideoSyncState] = useState<VideoSyncState>({ url: null, playing: false, playedSeconds: 0, timestamp: Date.now() });
+  const [videoSyncState, setVideoSyncState] = useState<VideoSyncState>(createEmptyVideoSyncState());
 
   const setupDataChannel = useCallback((channel: RTCDataChannel, targetSocketId: string, remoteUserName: string) => {
     if (peersRef.current[targetSocketId]) {
@@ -113,6 +114,113 @@ export const useChatDataChannel = ({ userName, peersRef, hostedVirtualPeersRef, 
     });
   }, [peersRef]);
 
+  const patchVideoState = useCallback((patch: Partial<VideoSyncState>) => {
+    setVideoSyncState((prev) => {
+      const next = { ...prev, ...patch, timestamp: patch.timestamp ?? Date.now() };
+      const messagePayload = { type: 'video-sync', state: next };
+      Object.values(peersRef.current).forEach((peer) => {
+        if (peer.dataChannel && peer.dataChannel.readyState === 'open') {
+          peer.dataChannel.send(JSON.stringify(messagePayload));
+        }
+      });
+      return next;
+    });
+  }, [peersRef]);
+
+  const addToQueue = useCallback((video: WatchPartyVideo, playNow = false) => {
+    setVideoSyncState((prev) => {
+      const queue = [...(prev.queue ?? []), video];
+      let next: VideoSyncState = { ...prev, queue };
+
+      if (playNow || !prev.url) {
+        next = playVideoAtIndex({ ...next, queue }, queue.length - 1);
+      }
+
+      const messagePayload = { type: 'video-sync', state: next };
+      Object.values(peersRef.current).forEach((peer) => {
+        if (peer.dataChannel && peer.dataChannel.readyState === 'open') {
+          peer.dataChannel.send(JSON.stringify(messagePayload));
+        }
+      });
+      return next;
+    });
+  }, [peersRef]);
+
+  const removeFromQueue = useCallback((videoId: string) => {
+    setVideoSyncState((prev) => {
+      const queue = (prev.queue ?? []).filter((v) => v.id !== videoId);
+      let queueIndex = prev.queueIndex ?? -1;
+      const removedIndex = (prev.queue ?? []).findIndex((v) => v.id === videoId);
+      if (removedIndex >= 0 && removedIndex < queueIndex) queueIndex -= 1;
+      if (removedIndex === queueIndex) queueIndex = Math.min(queueIndex, queue.length - 1);
+
+      const next = { ...prev, queue, queueIndex };
+      const messagePayload = { type: 'video-sync', state: next };
+      Object.values(peersRef.current).forEach((peer) => {
+        if (peer.dataChannel && peer.dataChannel.readyState === 'open') {
+          peer.dataChannel.send(JSON.stringify(messagePayload));
+        }
+      });
+      return next;
+    });
+  }, [peersRef]);
+
+  const playQueueIndex = useCallback((index: number) => {
+    setVideoSyncState((prev) => {
+      const next = playVideoAtIndex(prev, index);
+      const messagePayload = { type: 'video-sync', state: next };
+      Object.values(peersRef.current).forEach((peer) => {
+        if (peer.dataChannel && peer.dataChannel.readyState === 'open') {
+          peer.dataChannel.send(JSON.stringify(messagePayload));
+        }
+      });
+      return next;
+    });
+  }, [peersRef]);
+
+  const playNextInQueue = useCallback(() => {
+    setVideoSyncState((prev) => {
+      const nextIndex = getNextQueueIndex(prev);
+      if (nextIndex === null) {
+        const paused = { ...prev, playing: false, playedSeconds: expectedSeconds(prev), timestamp: Date.now() };
+        const messagePayload = { type: 'video-sync', state: paused };
+        Object.values(peersRef.current).forEach((peer) => {
+          if (peer.dataChannel && peer.dataChannel.readyState === 'open') {
+            peer.dataChannel.send(JSON.stringify(messagePayload));
+          }
+        });
+        return paused;
+      }
+      const next = playVideoAtIndex(prev, nextIndex);
+      const messagePayload = { type: 'video-sync', state: next };
+      Object.values(peersRef.current).forEach((peer) => {
+        if (peer.dataChannel && peer.dataChannel.readyState === 'open') {
+          peer.dataChannel.send(JSON.stringify(messagePayload));
+        }
+      });
+      return next;
+    });
+  }, [peersRef]);
+
+  const playPreviousInQueue = useCallback(() => {
+    setVideoSyncState((prev) => {
+      const prevIndex = getPreviousQueueIndex(prev);
+      if (prevIndex === null) return prev;
+      const next = playVideoAtIndex(prev, prevIndex);
+      const messagePayload = { type: 'video-sync', state: next };
+      Object.values(peersRef.current).forEach((peer) => {
+        if (peer.dataChannel && peer.dataChannel.readyState === 'open') {
+          peer.dataChannel.send(JSON.stringify(messagePayload));
+        }
+      });
+      return next;
+    });
+  }, [peersRef]);
+
+  const clearQueue = useCallback(() => {
+    patchVideoState({ queue: [], queueIndex: -1 });
+  }, [patchVideoState]);
+
   return {
     chatMessages,
     setChatMessages,
@@ -120,6 +228,18 @@ export const useChatDataChannel = ({ userName, peersRef, hostedVirtualPeersRef, 
     setVideoSyncState,
     setupDataChannel,
     sendChatMessage,
-    broadcastVideoState
+    broadcastVideoState,
+    patchVideoState,
+    addToQueue,
+    removeFromQueue,
+    playQueueIndex,
+    playNextInQueue,
+    playPreviousInQueue,
+    clearQueue,
   };
 };
+
+function expectedSeconds(state: VideoSyncState): number {
+  if (!state.playing) return state.playedSeconds;
+  return state.playedSeconds + (Date.now() - state.timestamp) / 1000;
+}

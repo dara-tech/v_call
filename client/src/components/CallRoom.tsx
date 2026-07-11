@@ -9,7 +9,7 @@ import { Dialog, DialogContent, DialogHeader, DialogTitle } from '@/components/u
 import { Button } from '@/components/ui/button';
 import { MicOff, Users, Hand } from 'lucide-react';
 import confetti from 'canvas-confetti';
-import { Toaster } from 'sonner';
+import { Toaster, toast } from 'sonner';
 import { AiPersonaAvatar } from './AiPersonaAvatar';
 import { AiPersonaBar } from './AiPersonaBar';
 import { WaitingRoomHero } from './WaitingRoomHero';
@@ -138,6 +138,13 @@ export const CallRoom: React.FC<CallRoomProps> = ({
     videoSyncState,
     sendChatMessage,
     broadcastVideoState,
+    patchVideoState,
+    addToQueue,
+    removeFromQueue,
+    playQueueIndex,
+    playNextInQueue,
+    playPreviousInQueue,
+    clearQueue,
     toggleMute,
     toggleCamera,
     toggleScreenShare,
@@ -216,13 +223,22 @@ export const CallRoom: React.FC<CallRoomProps> = ({
   };
 
   useEffect(() => {
-    initLocalMedia(activeAudioId, activeVideoId);
+    initLocalMedia(activeAudioId, activeVideoId).catch((err) => {
+      console.error('Failed to access camera/microphone:', err);
+      toast.error('Could not access camera or microphone. Check browser permissions.');
+    });
   }, [initLocalMedia, activeAudioId, activeVideoId]);
 
   // Bind local video stream to element
   useEffect(() => {
-    if (localVideoRef.current && localStream && !isCameraOff) {
-      localVideoRef.current.srcObject = localStream;
+    const video = localVideoRef.current;
+    if (video && localStream && !isCameraOff) {
+      video.srcObject = localStream;
+      video.play().catch((err) => {
+        console.warn('[WebRTC] Local video autoplay prevented:', err);
+      });
+    } else if (video) {
+      video.srcObject = null;
     }
   }, [localStream, isCameraOff]);
 
@@ -334,6 +350,13 @@ export const CallRoom: React.FC<CallRoomProps> = ({
             <WatchPartyPlayer
               videoSyncState={videoSyncState}
               broadcastVideoState={broadcastVideoState}
+              patchVideoState={patchVideoState}
+              addToQueue={addToQueue}
+              removeFromQueue={removeFromQueue}
+              playQueueIndex={playQueueIndex}
+              playNextInQueue={playNextInQueue}
+              playPreviousInQueue={playPreviousInQueue}
+              clearQueue={clearQueue}
               onClose={() => setShowWatchParty(false)}
               onAudioStreamChange={setWatchPartyAudioStream}
               onStartTranslate={startLiveTranslate}
@@ -386,19 +409,45 @@ export const CallRoom: React.FC<CallRoomProps> = ({
                 ))}
               </div>
             ) : (
-              <WaitingRoomHero
-                roomId={roomId}
-                onCopyInvite={handleCopyInvite}
-                isCopied={isCopied}
-              />
+              <div className="relative flex h-full min-h-0 w-full flex-col items-center justify-center px-safe py-6">
+                {localStream && !isCameraOff ? (
+                  <div className="relative aspect-video w-full max-w-2xl overflow-hidden rounded-2xl border border-white/10 bg-zinc-950 shadow-2xl">
+                    <video
+                      ref={localVideoRef}
+                      autoPlay
+                      playsInline
+                      muted
+                      className="h-full w-full scale-x-[-1] object-cover"
+                    />
+                    <div className="absolute bottom-3 left-3 rounded-full bg-black/50 px-3 py-1 text-xs font-medium text-white backdrop-blur-xl">
+                      You · waiting for others
+                    </div>
+                  </div>
+                ) : (
+                  <WaitingRoomHero
+                    roomId={roomId}
+                    onCopyInvite={handleCopyInvite}
+                    isCopied={isCopied}
+                  />
+                )}
+                {localStream && !isCameraOff && (
+                  <div className="mt-6 w-full max-w-sm">
+                    <WaitingRoomHero
+                      roomId={roomId}
+                      onCopyInvite={handleCopyInvite}
+                      isCopied={isCopied}
+                    />
+                  </div>
+                )}
+              </div>
             )}
           </div>
 
-          {/* Local PIP — hide on mobile during watch party */}
+          {/* Local PIP — hidden while alone (main preview shown instead) */}
           <div
             className={`absolute right-3 top-3 z-30 aspect-video w-20 overflow-hidden rounded-xl bg-zinc-950 shadow-lg ring-1 ring-white/15 sm:right-4 sm:top-4 sm:w-28 sm:rounded-2xl md:w-32 ${
-              showWatchParty || isTranslateActive ? 'hidden sm:block' : ''
-            } ${isTranslateActive ? 'hidden' : ''}`}
+              !hasPeers ? 'hidden' : ''
+            } ${showWatchParty || isTranslateActive ? 'hidden sm:block' : ''} ${isTranslateActive ? 'hidden' : ''}`}
           >
             {localStream && !isCameraOff ? (
               <video

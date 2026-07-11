@@ -3,13 +3,16 @@ import React, { useEffect, useRef, useState } from 'react';
 interface DailyMotionSyncPlayerProps {
   videoId: string;
   playing: boolean;
+  playbackRate?: number;
   onPlay: () => void;
   onPause: () => void;
   onProgress: (state: { playedSeconds: number }) => void;
+  onEnded?: () => void;
+  onDuration?: (seconds: number) => void;
 }
 
 export const DailyMotionSyncPlayer = React.forwardRef<any, DailyMotionSyncPlayerProps>(
-  ({ videoId, playing, onPlay, onPause, onProgress }, ref) => {
+  ({ videoId, playing, playbackRate = 1, onPlay, onPause, onProgress, onEnded, onDuration }, ref) => {
     const containerRef = useRef<HTMLDivElement>(null);
     const playerRef = useRef<any>(null);
     const [isReady, setIsReady] = useState(false);
@@ -56,6 +59,14 @@ export const DailyMotionSyncPlayer = React.forwardRef<any, DailyMotionSyncPlayer
             }
           });
 
+          player.on('video_end', () => {
+            onEnded?.();
+          });
+
+          player.on('videochange', (state: any) => {
+            if (state?.videoDuration) onDuration?.(state.videoDuration);
+          });
+
           setIsReady(true);
         } catch (err) {
           console.error('[DailyMotion] Error initializing player:', err);
@@ -92,7 +103,16 @@ export const DailyMotionSyncPlayer = React.forwardRef<any, DailyMotionSyncPlayer
         console.error('[DailyMotion] Error changing playback state:', err);
         ignoreNextPlayPause.current = false;
       }
-    }, [playing, isReady]);
+    }, [playing, isReady, playbackRate]);
+
+    useEffect(() => {
+      if (!isReady || !playerRef.current) return;
+      try {
+        if (typeof playerRef.current.setPlaybackRate === 'function') {
+          playerRef.current.setPlaybackRate(playbackRate);
+        }
+      } catch {}
+    }, [playbackRate, isReady]);
 
     // Expose methods to parent via ref
     React.useImperativeHandle(ref, () => ({

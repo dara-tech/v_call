@@ -120,7 +120,9 @@ export const useWebRTC = (roomId: string, userName: string, userId: string, acti
 
   const {
     chatMessages, setChatMessages, videoSyncState,
-    setupDataChannel, sendChatMessage, broadcastVideoState
+    setupDataChannel, sendChatMessage, broadcastVideoState,
+    patchVideoState, addToQueue, removeFromQueue, playQueueIndex,
+    playNextInQueue, playPreviousInQueue, clearQueue,
   } = useChatDataChannel({ userName, peersRef, hostedVirtualPeersRef, syncPeersState });
 
   const { summonAI, removeAI } = useAIParticipantManager({
@@ -189,7 +191,9 @@ export const useWebRTC = (roomId: string, userName: string, userId: string, acti
       await pc.setLocalDescription(hdOffer);
 
       socketRef.current?.emit('relay-signal', { targetSocketId: targetInfo.socketId, signalData: { type: 'sdp-offer', sdp: hdOffer } });
-    } catch (error) {}
+    } catch (error) {
+      console.error('[WebRTC] Failed to initiate call:', error);
+    }
   }, [createPeerConnection, setupDataChannel]);
 
   const handleIceRestart = async (targetSocketId: string) => {
@@ -354,7 +358,12 @@ export const useWebRTC = (roomId: string, userName: string, userId: string, acti
     });
 
     socket.on('all-users', (users: PeerInfo[]) => {
-      users.forEach((user) => initiateCall(user));
+      // Only the joiner receives all-users — they initiate offers to existing peers.
+      users.forEach((user) => {
+        if (user.socketId && user.socketId !== socket.id) {
+          initiateCall(user);
+        }
+      });
     });
 
     socket.on('signal-received', async ({ senderSocketId, signalData, targetVirtualId }) => {
@@ -419,10 +428,8 @@ export const useWebRTC = (roomId: string, userName: string, userId: string, acti
       }
     });
 
-    socket.on('user-joined', (user: PeerInfo) => {
-      if (user.socketId && user.socketId !== socket.id) {
-        initiateCall(user);
-      }
+    socket.on('user-joined', (_user: PeerInfo) => {
+      // Joiner initiates via all-users; existing peers answer incoming offers.
     });
 
     socket.on('toggle-hand', ({ socketId, handRaised }) => {
@@ -511,7 +518,9 @@ export const useWebRTC = (roomId: string, userName: string, userId: string, acti
 
   return {
     localStream, peers, isMuted, isCameraOff, isScreenSharing, chatMessages, stats, videoSyncState,
-    isHandRaised, sendChatMessage, broadcastVideoState, toggleMute, toggleCamera, toggleScreenShare, toggleHand, sendReaction, leaveCall, initLocalMedia,
+    isHandRaised, sendChatMessage, broadcastVideoState, patchVideoState,
+    addToQueue, removeFromQueue, playQueueIndex, playNextInQueue, playPreviousInQueue, clearQueue,
+    toggleMute, toggleCamera, toggleScreenShare, toggleHand, sendReaction, leaveCall, initLocalMedia,
     summonAI, removeAI
   };
 };
