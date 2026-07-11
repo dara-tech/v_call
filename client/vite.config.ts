@@ -17,6 +17,6 @@ export default defineConfig({
   },
   build: {
     reportCompressedSize: false,
-    minify: false,
+    minify: 'esbuild',
   },
 })

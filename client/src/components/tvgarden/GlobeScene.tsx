@@ -1,4 +1,4 @@
-import { useEffect, useRef } from 'react';
+import { useEffect, useRef, useState } from 'react';
 import * as THREE from 'three';
 import { easeInOutCubic, getCentroid, latLngToVector3 } from '@/lib/tvgarden/geo';
 import { countryFillColor } from '@/lib/tvgarden/countryGeo';
@@ -97,10 +97,21 @@ function buildDotMeshes(markers: GlobeMarker[], selectedCode: string | null, dot
   return meshes;
 }
 
+function canUseWebGL() {
+  try {
+    const canvas = document.createElement('canvas');
+    return Boolean(canvas.getContext('webgl') || canvas.getContext('experimental-webgl'));
+  } catch {
+    return false;
+  }
+}
+
 export function GlobeScene({ markers, selectedCode, onSelectCountry }: GlobeSceneProps) {
   const containerRef = useRef<HTMLDivElement>(null);
   const onSelectRef = useRef(onSelectCountry);
   onSelectRef.current = onSelectCountry;
+
+  const [webglFailed, setWebglFailed] = useState(false);
 
   const sceneRef = useRef<{
     earthGroup: THREE.Group;
@@ -175,7 +186,12 @@ export function GlobeScene({ markers, selectedCode, onSelectCountry }: GlobeScen
 
   useEffect(() => {
     const container = containerRef.current;
-    if (!container) return;
+    if (!container || webglFailed) return;
+
+    if (!canUseWebGL()) {
+      setWebglFailed(true);
+      return;
+    }
 
     const width = Math.max(container.clientWidth, 1);
     const height = Math.max(container.clientHeight, 1);
@@ -185,6 +201,11 @@ export function GlobeScene({ markers, selectedCode, onSelectCountry }: GlobeScen
     camera.position.set(0, 0, DEFAULT_CAMERA_Z);
 
     const renderer = new THREE.WebGLRenderer({ antialias: true, alpha: true });
+    if (!renderer.getContext()) {
+      setWebglFailed(true);
+      renderer.dispose();
+      return;
+    }
     renderer.setSize(width, height);
     renderer.setPixelRatio(Math.min(window.devicePixelRatio, 2));
     container.appendChild(renderer.domElement);
@@ -415,7 +436,7 @@ export function GlobeScene({ markers, selectedCode, onSelectCountry }: GlobeScen
         container.removeChild(renderer.domElement);
       }
     };
-  }, []);
+  }, [webglFailed]);
 
   useEffect(() => {
     rebuildDots();
@@ -425,6 +446,17 @@ export function GlobeScene({ markers, selectedCode, onSelectCountry }: GlobeScen
   useEffect(() => {
     rebuildDots();
   }, [markers]);
+
+  if (webglFailed) {
+    return (
+      <div className="flex h-full min-h-[200px] flex-col items-center justify-center gap-2 rounded-xl border border-white/10 bg-zinc-950/80 p-6 text-center">
+        <p className="text-sm font-medium text-zinc-200">Globe unavailable on this device</p>
+        <p className="max-w-xs text-xs text-zinc-500">
+          Use the country list on the left to browse channels. For the full globe, open on desktop Chrome or Safari.
+        </p>
+      </div>
+    );
+  }
 
   return (
     <div
