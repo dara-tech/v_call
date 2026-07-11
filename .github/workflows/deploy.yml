@@ -17,12 +17,12 @@ jobs:
           password: ${{ secrets.VPS_PASSWORD }}
           port: 22
           script: |
+            set -e
             cd /root/v_call
             git pull origin main
             npm install
             npm run build --workspace=client
-            cd /root/v_server
+            cd /root/v_call/server
             npm install
-            pm2 delete v_call-server 2>/dev/null || true
-            SERVE_CLIENT_DIST=/root/v_call/client/dist PORT=5001 pm2 restart v-server --update-env || \
-              SERVE_CLIENT_DIST=/root/v_call/client/dist PORT=5001 pm2 start src/index.js --name v-server
+            pm2 restart v_call-server --update-env || \
+              SERVE_CLIENT_DIST=/root/v_call/client/dist PORT=5001 pm2 start index.js --name v_call-server --cwd /root/v_call/server
