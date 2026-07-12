@@ -19,6 +19,9 @@ const clientDist = path.resolve(__dirname, '../client/dist');
 const app = express();
 const port = process.env.PORT || 5001;
 
+// nginx/sslip.io terminates TLS — needed so IPTV proxy rewrites use https:// URLs.
+app.set('trust proxy', 1);
+
 app.use(cors({ origin: '*' }));
 
 app.get('/health', (req, res) => {

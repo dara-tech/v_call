@@ -88,7 +88,8 @@ export function LivePlayer({ channel }: LivePlayerProps) {
 
     if (isHls && Hls.isSupported()) {
       const hls = new Hls({
-        enableWorker: true,
+        // Web workers often fail on hosted/TV builds (wrong chunk URL) → black video.
+        enableWorker: false,
         lowLatencyMode: false,
         manifestLoadingTimeOut: 20000,
         fragLoadingTimeOut: 20000,

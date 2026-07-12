@@ -1,7 +1,12 @@
-import { useState } from 'react';
+import { lazy, Suspense, useState } from 'react';
+import { Loader2 } from 'lucide-react';
 import { PreCallLobby } from './components/PreCallLobby';
 import { CallRoom } from './components/CallRoom';
-import { TvGardenPanel } from './components/tvgarden/TvGardenPanel';
+import { TvGardenErrorBoundary } from './components/tvgarden/TvGardenErrorBoundary';
+
+const TvGardenPanel = lazy(() =>
+  import('./components/tvgarden/TvGardenPanel').then((m) => ({ default: m.TvGardenPanel })),
+);
 
 type AppScreen = 'lobby' | 'call' | 'tvgarden';
 
@@ -25,7 +30,19 @@ function App() {
   };
 
   if (screen === 'tvgarden') {
-    return <TvGardenPanel onClose={() => setScreen('lobby')} />;
+    return (
+      <TvGardenErrorBoundary onClose={() => setScreen('lobby')}>
+        <Suspense
+          fallback={
+            <div className="flex h-dvh min-h-screen items-center justify-center bg-[#050810] text-zinc-400">
+              <Loader2 className="size-6 animate-spin text-brand-cyan" />
+            </div>
+          }
+        >
+          <TvGardenPanel onClose={() => setScreen('lobby')} />
+        </Suspense>
+      </TvGardenErrorBoundary>
+    );
   }
 
   if (screen === 'call' && callParams) {

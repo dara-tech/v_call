@@ -3,10 +3,9 @@ import * as THREE from 'three';
 import { easeInOutCubic, getCentroid, latLngToVector3 } from '@/lib/tvgarden/geo';
 import { countryFillColor } from '@/lib/tvgarden/countryGeo';
 
-const EARTH_TEXTURE =
-  'https://cdn.jsdelivr.net/npm/three-globe@2.31.1/example/img/earth-dark.jpg';
-const BUMP_TEXTURE =
-  'https://cdn.jsdelivr.net/npm/three-globe@2.31.1/example/img/earth-topology.png';
+// Same-origin assets — CDN textures often fail on TV browsers and look like a black screen.
+const EARTH_TEXTURE = '/tvgarden/earth-dark.jpg';
+const BUMP_TEXTURE = '/tvgarden/earth-topology.png';
 
 const GLOBE_RADIUS = 1;
 const DOT_SURFACE = GLOBE_RADIUS + 0.018;
@@ -112,6 +111,7 @@ export function GlobeScene({ markers, selectedCode, onSelectCountry }: GlobeScen
   onSelectRef.current = onSelectCountry;
 
   const [webglFailed, setWebglFailed] = useState(false);
+  const [globeReady, setGlobeReady] = useState(false);
 
   const sceneRef = useRef<{
     earthGroup: THREE.Group;
@@ -219,16 +219,43 @@ export function GlobeScene({ markers, selectedCode, onSelectCountry }: GlobeScen
     const earthGroup = new THREE.Group();
     scene.add(earthGroup);
 
+    const earthMaterial = new THREE.MeshPhongMaterial({
+      color: 0x1a3a5c,
+      specular: new THREE.Color(0x111122),
+      shininess: 5,
+    });
+    let texturesLoaded = 0;
+    const markTextureReady = () => {
+      texturesLoaded += 1;
+      if (texturesLoaded >= 2) setGlobeReady(true);
+    };
+
+    loader.load(
+      EARTH_TEXTURE,
+      (tex) => {
+        earthMaterial.map = tex;
+        earthMaterial.needsUpdate = true;
+        markTextureReady();
+      },
+      undefined,
+      () => markTextureReady(),
+    );
+    loader.load(
+      BUMP_TEXTURE,
+      (tex) => {
+        earthMaterial.bumpMap = tex;
+        earthMaterial.bumpScale = 0.025;
+        earthMaterial.needsUpdate = true;
+        markTextureReady();
+      },
+      undefined,
+      () => markTextureReady(),
+    );
+
     earthGroup.add(
       new THREE.Mesh(
         new THREE.SphereGeometry(GLOBE_RADIUS, 72, 72),
-        new THREE.MeshPhongMaterial({
-          map: loader.load(EARTH_TEXTURE),
-          bumpMap: loader.load(BUMP_TEXTURE),
-          bumpScale: 0.025,
-          specular: new THREE.Color(0x111122),
-          shininess: 5,
-        }),
+        earthMaterial,
       ),
     );
     earthGroup.add(
@@ -420,6 +447,7 @@ export function GlobeScene({ markers, selectedCode, onSelectCountry }: GlobeScen
 
     return () => {
       cancelAnimationFrame(state.frameId);
+      setGlobeReady(false);
       ro.disconnect();
       renderer.domElement.removeEventListener('pointerdown', onPointerDown);
       renderer.domElement.removeEventListener('pointerup', onPointerUp);
@@ -459,9 +487,16 @@ export function GlobeScene({ markers, selectedCode, onSelectCountry }: GlobeScen
   }
 
   return (
-    <div
-      ref={containerRef}
-      className="relative h-full min-h-[200px] w-full touch-none cursor-grab active:cursor-grabbing"
-    />
+    <div className="relative h-full min-h-[200px] w-full">
+      {!globeReady && (
+        <div className="absolute inset-0 z-[1] flex items-center justify-center bg-[#050810]/80">
+          <p className="text-xs text-zinc-500">Loading globe…</p>
+        </div>
+      )}
+      <div
+        ref={containerRef}
+        className="relative h-full min-h-[200px] w-full touch-none cursor-grab active:cursor-grabbing"
+      />
+    </div>
   );
 }

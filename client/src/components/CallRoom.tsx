@@ -1,14 +1,18 @@
-import React, { useEffect, useRef, useState, useMemo } from 'react';
+import React, { lazy, Suspense, useEffect, useRef, useState, useMemo } from 'react';
 import { useWebRTC } from '../hooks/useWebRTC';
 import type { PeerState } from '../hooks/useWebRTC';
 import { Toolbar } from './Toolbar';
 import { ChatPanel } from './ChatPanel';
 import { DeviceSelect } from './DeviceSelect';
 import { WatchPartyPlayer } from './WatchPartyPlayer';
-import { TvGardenPanel } from './tvgarden/TvGardenPanel';
+import { TvGardenErrorBoundary } from './tvgarden/TvGardenErrorBoundary';
+
+const TvGardenPanel = lazy(() =>
+  import('./tvgarden/TvGardenPanel').then((m) => ({ default: m.TvGardenPanel })),
+);
 import { Dialog, DialogContent, DialogHeader, DialogTitle } from '@/components/ui/dialog';
 import { Button } from '@/components/ui/button';
-import { MicOff, Users, Hand } from 'lucide-react';
+import { MicOff, Users, Hand, Loader2 } from 'lucide-react';
 import confetti from 'canvas-confetti';
 import { Toaster, toast } from 'sonner';
 import { AiPersonaAvatar } from './AiPersonaAvatar';
@@ -390,7 +394,17 @@ export const CallRoom: React.FC<CallRoomProps> = ({
 
         {showTvGarden && (
           <div className="flex min-h-0 min-w-0 flex-1 flex-col">
-            <TvGardenPanel embedded onClose={() => setShowTvGarden(false)} />
+            <TvGardenErrorBoundary onClose={() => setShowTvGarden(false)}>
+              <Suspense
+                fallback={
+                  <div className="flex flex-1 items-center justify-center bg-[#050810] text-zinc-400">
+                    <Loader2 className="size-6 animate-spin text-brand-cyan" />
+                  </div>
+                }
+              >
+                <TvGardenPanel embedded onClose={() => setShowTvGarden(false)} />
+              </Suspense>
+            </TvGardenErrorBoundary>
           </div>
         )}
 

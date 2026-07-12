@@ -25,11 +25,27 @@ function buildProxyUrl(originUrl, proxyBase, userAgent, referrer) {
   return `${proxyBase}/api/tvgarden/proxy?${params.toString()}`;
 }
 
-function looksLikeM3u8(url, contentType, bodyHead) {
-  if (/\.m3u8(\?|$)/i.test(url)) return true;
-  if (contentType && /mpegurl|m3u8/i.test(contentType)) return true;
-  if (bodyHead && bodyHead.trimStart().startsWith('#EXTM3U')) return true;
-  return false;
+/** Public origin for playlist rewrites — must match the page protocol (https on Vercel/sslip.io). */
+export function getProxyBase(req) {
+  const forwarded = req.get('x-forwarded-proto');
+  let proto = (forwarded ? forwarded.split(',')[0].trim() : req.protocol) || 'https';
+  const host = req.get('x-forwarded-host') || req.get('host');
+  // nginx on VPS may omit X-Forwarded-Proto; sslip.io is always HTTPS from the browser.
+  if (proto === 'http' && host && /\.sslip\.io$/i.test(host)) {
+    proto = 'https';
+  }
+  return `${proto}://${host}`;
+}
+
+function rewriteUriAttribute(line, base, proxyBase, userAgent, referrer) {
+  return line.replace(/URI=(["'])([^"']+)\1/gi, (_m, quote, uri) => {
+    try {
+      const abs = new URL(uri, base).href;
+      return `URI=${quote}${buildProxyUrl(abs, proxyBase, userAgent, referrer)}${quote}`;
+    } catch {
+      return _m;
+    }
+  });
 }
 
 function rewritePlaylist(text, baseUrl, proxyBase, userAgent, referrer) {
@@ -39,14 +55,7 @@ function rewritePlaylist(text, baseUrl, proxyBase, userAgent, referrer) {
     if (!trimmed) return line;
 
     if (trimmed.startsWith('#')) {
-      return trimmed.replace(/URI="([^"]+)"/gi, (_m, uri) => {
-        try {
-          const abs = new URL(uri, base).href;
-          return `URI="${buildProxyUrl(abs, proxyBase, userAgent, referrer)}"`;
-        } catch {
-          return _m;
-        }
-      });
+      return rewriteUriAttribute(trimmed, base, proxyBase, userAgent, referrer);
     }
 
     try {
@@ -56,6 +65,13 @@ function rewritePlaylist(text, baseUrl, proxyBase, userAgent, referrer) {
       return line;
     }
   }).join('\n');
+}
+
+function looksLikeM3u8(url, contentType, bodyHead) {
+  if (/\.m3u8(\?|$)/i.test(url)) return true;
+  if (contentType && /mpegurl|m3u8/i.test(contentType)) return true;
+  if (bodyHead && bodyHead.trimStart().startsWith('#EXTM3U')) return true;
+  return false;
 }
 
 function requestOnce(url, headers) {
@@ -127,7 +143,7 @@ export async function pipeIptvStream(req, res, { url, userAgent, referrer }) {
   const headers = { 'User-Agent': ua, Accept: '*/*' };
   if (ref) headers.Referer = ref;
 
-  const proxyBase = `${req.protocol}://${req.get('host')}`;
+  const proxyBase = getProxyBase(req);
 
   try {
     const { res: upRes, url: finalUrl } = await fetchUpstream(url, headers);

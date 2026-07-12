@@ -23,7 +23,7 @@ export function resolveStreamUrl(relativeOrAbsolute: string, baseUrl: string): s
   }
 }
 
-export type StreamFailureReason = 'offline' | 'cors' | 'timeout' | 'format' | 'proxy_down' | 'unknown';
+export type StreamFailureReason = 'offline' | 'cors' | 'timeout' | 'format' | 'proxy_down' | 'mixed_content' | 'unknown';
 
 export function describeStreamFailure(reason: StreamFailureReason): string {
   switch (reason) {
@@ -37,6 +37,8 @@ export function describeStreamFailure(reason: StreamFailureReason): string {
       return 'Unsupported format in this browser.';
     case 'offline':
       return 'This link is dead, geo-blocked, or offline. Try another channel or tap Random.';
+    case 'mixed_content':
+      return 'Stream blocked by browser (HTTP on HTTPS page). Try another channel — server fix may need a redeploy.';
     default:
       return 'Could not play. Try another channel or tap Retry.';
   }

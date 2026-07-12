@@ -67,7 +67,7 @@ export function TvGardenPanel({ onClose, embedded = false }: TvGardenPanelProps)
     setFavoriteIds(toggleFavorite(id));
   }, []);
 
-  const shellClass = embedded ? 'h-full min-h-0' : 'h-dvh';
+  const shellClass = embedded ? 'h-full min-h-0' : 'h-dvh min-h-screen min-h-[100vh]';
 
   if (loading) {
     return (
