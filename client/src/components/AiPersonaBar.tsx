@@ -49,7 +49,6 @@ interface AiPersonaBarProps {
   onSummon: (persona: AIPersona) => void;
   onRemove: (socketId: string) => void;
   className?: string;
-  onOpenSettings?: () => void;
 }
 
 export const AiPersonaBar: React.FC<AiPersonaBarProps> = ({
@@ -57,14 +56,12 @@ export const AiPersonaBar: React.FC<AiPersonaBarProps> = ({
   onSummon,
   onRemove,
   className = '',
-  onOpenSettings,
 }) => {
   return (
     <TooltipProvider delayDuration={200}>
-      <div className={`px-safe ${className}`}>
-        <div className="flex items-center gap-2 rounded-full border border-white/10 bg-black/50 px-2 py-2 shadow-lg backdrop-blur-xl">
-          <div className="flex min-w-0 flex-1 gap-2 overflow-x-auto scrollbar-none [-ms-overflow-style:none] [&::-webkit-scrollbar]:hidden">
-            {PERSONA_ORDER.map((key) => {
+      <div className={className}>
+        <div className="flex flex-wrap gap-3 p-1">
+          {PERSONA_ORDER.map((key) => {
             const label = DISPLAY_LABELS[key] ?? PERSONAS[key].name;
             const activeId = activePersonas[key];
             const isActive = Boolean(activeId);
@@ -105,33 +102,6 @@ export const AiPersonaBar: React.FC<AiPersonaBarProps> = ({
             );
           })}
           </div>
-
-          <Tooltip>
-            <TooltipTrigger asChild>
-              <button
-                type="button"
-                aria-label="Call Settings"
-                className="flex size-8 shrink-0 items-center justify-center rounded-full text-zinc-400 transition-all hover:bg-white/10 hover:text-cyan-300 hover:shadow-[0_0_10px_rgba(34,211,238,0.4)] active:scale-90 cursor-pointer"
-                onClick={(e) => {
-                  e.stopPropagation();
-                  playFutureClick('info');
-                  onOpenSettings?.();
-                }}
-              >
-                <Settings className="size-4" />
-              </button>
-            </TooltipTrigger>
-            <TooltipContent
-              side="bottom"
-              className="max-w-xs border-white/10 bg-zinc-950 text-white text-xs sm:max-w-sm"
-            >
-              <p className="font-semibold text-cyan-300">Call Settings</p>
-              <p className="mt-1 text-zinc-300">
-                Configure your camera, microphone, and audio device preferences.
-              </p>
-            </TooltipContent>
-          </Tooltip>
-        </div>
       </div>
     </TooltipProvider>
   );

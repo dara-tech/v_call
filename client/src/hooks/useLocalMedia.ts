@@ -29,7 +29,7 @@ export const useLocalMedia = ({ localStreamRef, peersRef, hostedVirtualPeersRef 
 
       const constraints: MediaStreamConstraints = {
         audio: audioId ? { deviceId: { exact: audioId }, echoCancellation: true, noiseSuppression: true, autoGainControl: true } : { echoCancellation: true, noiseSuppression: true, autoGainControl: true },
-        video: videoId ? { deviceId: { exact: videoId }, width: { ideal: 640 }, height: { ideal: 360 }, frameRate: { ideal: 15, max: 20 } } : { width: { ideal: 640 }, height: { ideal: 360 }, frameRate: { ideal: 15, max: 20 } },
+        video: videoId ? { deviceId: { exact: videoId }, width: { ideal: 1280 }, height: { ideal: 720 }, frameRate: { ideal: 30, max: 60 } } : { width: { ideal: 1280 }, height: { ideal: 720 }, frameRate: { ideal: 30, max: 60 } },
       };
 
       const stream = await navigator.mediaDevices.getUserMedia(constraints);
@@ -75,11 +75,15 @@ export const useLocalMedia = ({ localStreamRef, peersRef, hostedVirtualPeersRef 
     try {
       if (isScreenSharing) {
         setIsScreenSharing(false);
-        const originalStream = await navigator.mediaDevices.getUserMedia({ video: { width: { ideal: 640 }, height: { ideal: 360 } } });
+        const originalStream = await navigator.mediaDevices.getUserMedia({ video: { width: { ideal: 1280 }, height: { ideal: 720 }, frameRate: { ideal: 30, max: 60 } } });
         const newVideoTrack = originalStream.getVideoTracks()[0];
         const oldVideoTrack = localStreamRef.current.getVideoTracks()[0];
         if (oldVideoTrack) { localStreamRef.current.removeTrack(oldVideoTrack); oldVideoTrack.stop(); }
         localStreamRef.current.addTrack(newVideoTrack);
+        
+        // Force React to re-render with the new stream object
+        setLocalStream(new MediaStream(localStreamRef.current.getTracks()));
+
         Object.values(peersRef.current).forEach((peer) => {
           if (!peer.pc) return;
           const videoSender = peer.pc.getSenders().find((s) => s.track?.kind === 'video');
@@ -92,11 +96,7 @@ export const useLocalMedia = ({ localStreamRef, peersRef, hostedVirtualPeersRef 
       } else {
         const screenStream = await navigator.mediaDevices.getDisplayMedia({ 
           video: { frameRate: { ideal: 30 } },
-          audio: {
-            echoCancellation: false,
-            noiseSuppression: false,
-            autoGainControl: false,
-          }
+          audio: true // Simplest constraint to avoid OS-level rejections on macOS/Safari
         });
         const screenTrack = screenStream.getVideoTracks()[0];
         const screenAudioTrack = screenStream.getAudioTracks()[0];
@@ -112,6 +112,9 @@ export const useLocalMedia = ({ localStreamRef, peersRef, hostedVirtualPeersRef 
           localStreamRef.current.addTrack(screenAudioTrack);
         }
 
+        // Force React to re-render with the new stream object
+        setLocalStream(new MediaStream(localStreamRef.current.getTracks()));
+
         Object.values(peersRef.current).forEach((peer) => {
           if (!peer.pc) return;
           const videoSender = peer.pc.getSenders().find((s) => s.track?.kind === 'video');
@@ -125,7 +128,31 @@ export const useLocalMedia = ({ localStreamRef, peersRef, hostedVirtualPeersRef 
           }
         });
         setIsScreenSharing(true);
-        screenTrack.onended = () => toggleScreenShare();
+        
+        // Fix closure stale state by using a state setter directly or avoiding recursive toggle calls
+        screenTrack.onended = async () => {
+          setIsScreenSharing(false);
+          try {
+            const originalStream = await navigator.mediaDevices.getUserMedia({ video: { width: { ideal: 1280 }, height: { ideal: 720 }, frameRate: { ideal: 30, max: 60 } } });
+            const newVideoTrack = originalStream.getVideoTracks()[0];
+            const currentOldVideoTrack = localStreamRef.current?.getVideoTracks()[0];
+            if (currentOldVideoTrack) { localStreamRef.current?.removeTrack(currentOldVideoTrack); currentOldVideoTrack.stop(); }
+            if (localStreamRef.current && newVideoTrack) {
+               localStreamRef.current.addTrack(newVideoTrack);
+               setLocalStream(new MediaStream(localStreamRef.current.getTracks()));
+               Object.values(peersRef.current).forEach((peer) => {
+                 if (!peer.pc) return;
+                 const videoSender = peer.pc.getSenders().find((s) => s.track?.kind === 'video');
+                 if (videoSender) {
+                   videoSender.replaceTrack(newVideoTrack);
+                   applyBitrateLimits(peer.pc, false);
+                 }
+               });
+            }
+          } catch (e) {
+             console.error('Failed to revert to camera after screen share ended', e);
+          }
+        };
       }
     } catch (err) {
       console.error('[WebRTC] Error sharing screen:', err);

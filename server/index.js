@@ -11,9 +11,9 @@ import { isYoutubeWatchUrl, pipeYoutubeAudio } from './youtubeAudio.js';
 import { isAllowedStreamUrl, pipeIptvStream } from './iptvProxy.js';
 import puppeteer from 'puppeteer';
 
-dotenv.config();
-
 const __dirname = path.dirname(fileURLToPath(import.meta.url));
+dotenv.config({ path: path.join(__dirname, '.env') });
+
 const clientDist = path.resolve(__dirname, '../client/dist');
 
 const app = express();

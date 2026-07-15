@@ -15,6 +15,7 @@ import {
   Check,
   Languages,
   CircleDot,
+  Settings as SettingsIcon,
 } from 'lucide-react';
 import { LIVE_TRANSLATE_LANGUAGES } from '../lib/ai/liveConfig';
 import { playFutureClick } from '../lib/ui/futureClickSound';
@@ -46,6 +47,7 @@ interface ToolbarProps {
   isScreenRecording?: boolean;
   recordingDurationSec?: number;
   onToggleScreenRecording?: () => void;
+  onOpenSettings?: () => void;
 }
 
 export const Toolbar: React.FC<ToolbarProps> = ({
@@ -69,23 +71,9 @@ export const Toolbar: React.FC<ToolbarProps> = ({
   isScreenRecording = false,
   recordingDurationSec = 0,
   onToggleScreenRecording,
+  onOpenSettings,
 }) => {
-  const [translateOpen, setTranslateOpen] = useState(false);
-  const targetLabel =
-    LIVE_TRANSLATE_LANGUAGES.find((l) => l.code === translateTargetLanguage)?.label ??
-    translateTargetLanguage;
 
-  const handleStopTranslate = () => {
-    playFutureClick('dismiss');
-    onStopLiveTranslate?.();
-    setTranslateOpen(false);
-  };
-
-  const handlePickLanguage = (code: string) => {
-    playFutureClick('summon');
-    onStartLiveTranslate?.(code);
-    setTranslateOpen(false);
-  };
 
   return (
     <TooltipProvider delayDuration={200}>
@@ -174,106 +162,7 @@ export const Toolbar: React.FC<ToolbarProps> = ({
           </Tooltip>
         )}
 
-        {/* Live Translate */}
-        {onStartLiveTranslate && onStopLiveTranslate && (
-          <Popover open={translateOpen} onOpenChange={setTranslateOpen}>
-            <Tooltip>
-              <TooltipTrigger asChild>
-                {isTranslateActive ? (
-                  <Button
-                    type="button"
-                    variant="secondary"
-                    size="icon-sm"
-                    className="shrink-0 snap-center size-[2.25rem] sm:size-[2.75rem] rounded-full border-brand-cyan/40 bg-brand-cyan/20 text-brand-cyan shadow-[0_0_14px_rgba(34,211,238,0.35)] transition-all active:scale-95"
-                    onClick={handleStopTranslate}
-                  >
-                    <Languages className="size-3.5 sm:size-4" />
-                  </Button>
-                ) : (
-                  <PopoverTrigger asChild>
-                    <Button
-                      type="button"
-                      variant="outline"
-                      size="icon-sm"
-                      className="shrink-0 snap-center size-[2.25rem] sm:size-[2.75rem] rounded-full border-white/5 shadow-sm transition-all hover:bg-white/10 hover:shadow-[0_0_10px_rgba(34,211,238,0.25)] active:scale-95"
-                      onClick={() => playFutureClick('summon')}
-                    >
-                      <Languages className="size-3.5 sm:size-4" />
-                    </Button>
-                  </PopoverTrigger>
-                )}
-              </TooltipTrigger>
-              <TooltipContent side="top" className="max-w-[220px] border-white/10 bg-zinc-950 text-white text-xs hidden sm:block">
-                {isTranslateActive ? (
-                  <p>Translate → {targetLabel} — tap to stop</p>
-                ) : (
-                  <p>Live Translate</p>
-                )}
-              </TooltipContent>
-            </Tooltip>
-            <PopoverContent
-              side="top"
-              align="center"
-              className="w-52 border-white/10 bg-zinc-950 p-2 text-zinc-200"
-            >
-              <p className="px-1 text-[10px] font-medium uppercase tracking-wide text-zinc-500">
-                Target language
-              </p>
-              <div className="mt-1.5 grid grid-cols-2 gap-1">
-                {LIVE_TRANSLATE_LANGUAGES.map((lang) => (
-                  <button
-                    key={lang.code}
-                    type="button"
-                    onClick={() => handlePickLanguage(lang.code)}
-                    className="rounded-md border border-white/10 px-2 py-1 text-left text-[11px] transition-colors hover:border-cyan-500/30 hover:bg-cyan-500/10 hover:text-cyan-200"
-                  >
-                    {lang.label}
-                  </button>
-                ))}
-              </div>
-            </PopoverContent>
-          </Popover>
-        )}
 
-        <div className="shrink-0 snap-center h-6 sm:h-7 w-px bg-white/10 mx-1" />
-
-        {/* Toggle Watch Party */}
-        <Tooltip>
-          <TooltipTrigger asChild>
-            <Button
-              type="button"
-              variant={showWatchParty ? 'secondary' : 'outline'}
-              size="icon-sm"
-              className={`shrink-0 snap-center size-[2.25rem] sm:size-[2.75rem] rounded-full transition-all border-white/5 shadow-sm ${showWatchParty ? 'text-brand-orange bg-brand-orange/20 border-brand-orange/30' : 'hover:bg-white/10'}`}
-              onClick={onToggleWatchParty}
-            >
-              <Popcorn className="size-3.5 sm:size-4" />
-            </Button>
-          </TooltipTrigger>
-          <TooltipContent side="top" className="bg-zinc-950 text-white border-white/10 text-xs hidden sm:block">
-            <p>{showWatchParty ? 'Close Watch Party' : 'Open Watch Party'}</p>
-          </TooltipContent>
-        </Tooltip>
-
-        {/* TV Garden — live global channels */}
-        {onToggleTvGarden && (
-          <Tooltip>
-            <TooltipTrigger asChild>
-              <Button
-                type="button"
-                variant={showTvGarden ? 'secondary' : 'outline'}
-                size="icon-sm"
-                className={`shrink-0 snap-center size-[2.25rem] sm:size-[2.75rem] rounded-full transition-all border-white/5 shadow-sm ${showTvGarden ? 'text-brand-cyan bg-brand-cyan/20 border-brand-cyan/30' : 'hover:bg-white/10'}`}
-                onClick={onToggleTvGarden}
-              >
-                <Globe2 className="size-3.5 sm:size-4" />
-              </Button>
-            </TooltipTrigger>
-            <TooltipContent side="top" className="bg-zinc-950 text-white border-white/10 text-xs hidden sm:block">
-              <p>{showTvGarden ? 'Close TV Garden' : 'Open TV Garden'}</p>
-            </TooltipContent>
-          </Tooltip>
-        )}
 
         {/* Copy Invite Link */}
         {onCopyInvite && (
@@ -291,6 +180,26 @@ export const Toolbar: React.FC<ToolbarProps> = ({
             </TooltipTrigger>
             <TooltipContent side="top" className="bg-zinc-950 text-white border-white/10 text-xs hidden sm:block">
               <p>{isCopied ? 'Copied!' : 'Copy Room ID'}</p>
+            </TooltipContent>
+          </Tooltip>
+        )}
+
+        {/* Settings */}
+        {onOpenSettings && (
+          <Tooltip>
+            <TooltipTrigger asChild>
+              <Button
+                type="button"
+                variant="outline"
+                size="icon-sm"
+                className="shrink-0 snap-center size-[2.25rem] sm:size-[2.75rem] rounded-full transition-all border-white/5 hover:bg-white/10 shadow-sm"
+                onClick={onOpenSettings}
+              >
+                <SettingsIcon className="size-3.5 sm:size-4" />
+              </Button>
+            </TooltipTrigger>
+            <TooltipContent side="top" className="bg-zinc-950 text-white border-white/10 text-xs hidden sm:block">
+              <p>Settings & AI Features</p>
             </TooltipContent>
           </Tooltip>
         )}

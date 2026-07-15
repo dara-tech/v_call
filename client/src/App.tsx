@@ -62,8 +62,7 @@ function App() {
   return (
     <PreCallLobby
       onJoin={handleJoin}
-      onOpenTvGarden={() => setScreen('tvgarden')}
-      defaultRoom="lobby"
+      defaultRoom={new URLSearchParams(window.location.search).get('room') || 'lobby'}
     />
   );
 }

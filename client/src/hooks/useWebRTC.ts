@@ -50,7 +50,7 @@ export function preferOpusHd(sdp: string): string {
       let fmtp = lines[i];
       if (!fmtp.includes('stereo=1')) fmtp += ';stereo=1';
       if (!fmtp.includes('sprop-stereo=1')) fmtp += ';sprop-stereo=1';
-      if (!fmtp.includes('maxaveragebitrate=')) fmtp += ';maxaveragebitrate=64000';
+      if (!fmtp.includes('maxaveragebitrate=')) fmtp += ';maxaveragebitrate=128000';
       if (!fmtp.includes('useinbandfec=1')) fmtp += ';useinbandfec=1';
       if (!fmtp.includes('minptime=')) fmtp += ';minptime=10';
       if (!fmtp.includes('maxptime=')) fmtp += ';maxptime=20';
@@ -72,7 +72,7 @@ export function applyBitrateLimits(pc: RTCPeerConnection, isScreenSharing: boole
           if (!parameters.encodings) {
             parameters.encodings = [{}];
           }
-          parameters.encodings[0].maxBitrate = isScreenSharing ? 3000000 : 500000;
+          parameters.encodings[0].maxBitrate = isScreenSharing ? 5000000 : 2500000;
           sender.setParameters(parameters).catch(() => {});
         } catch (e) {}
       }
@@ -535,8 +535,8 @@ export const useWebRTC = (roomId: string, userName: string, userId: string, acti
 
       let peer = peersRef.current[senderSocketId];
       if (signalData.type === 'sdp-offer') {
-        if (!peer) {
-          const targetInfo = { socketId: senderSocketId, userId: senderSocketId, userName: 'Remote User' };
+        if (!peer || !peer.pc) {
+          const targetInfo = peer?.info || { socketId: senderSocketId, userId: senderSocketId, userName: 'Remote User' };
           createPeerConnection(targetInfo);
           peer = peersRef.current[senderSocketId];
         }
@@ -583,6 +583,17 @@ export const useWebRTC = (roomId: string, userName: string, userId: string, acti
           syncPeersState();
         }
         return;
+      }
+
+      // Store human peer info so we know their real name when they send an offer
+      if (!peersRef.current[user.socketId]) {
+        peersRef.current[user.socketId] = {
+          info: user,
+          stream: null,
+          pc: null as any,
+          dataChannel: null,
+        };
+        syncPeersState();
       }
 
       // Bridge all hosted AIs to the newly joined human peer

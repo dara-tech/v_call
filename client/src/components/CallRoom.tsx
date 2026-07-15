@@ -12,7 +12,7 @@ const TvGardenPanel = lazy(() =>
 );
 import { Dialog, DialogContent, DialogHeader, DialogTitle } from '@/components/ui/dialog';
 import { Button } from '@/components/ui/button';
-import { MicOff, Users, Hand, Loader2 } from 'lucide-react';
+import { MicOff, Users, Hand, Loader2, Languages, Popcorn, Globe2 } from 'lucide-react';
 import confetti from 'canvas-confetti';
 import { Toaster, toast } from 'sonner';
 import { AiPersonaAvatar } from './AiPersonaAvatar';
@@ -23,6 +23,7 @@ import type { AIPersona } from '../lib/ai/types';
 import { useLiveTranslate } from '../hooks/useLiveTranslate';
 import { LiveTranslatePanel } from './LiveTranslatePanel';
 import { useScreenRecorder } from '../hooks/useScreenRecorder';
+import { LIVE_TRANSLATE_LANGUAGES } from '../lib/ai/liveConfig';
 
 interface CallRoomProps {
   roomId: string;
@@ -180,6 +181,7 @@ export const CallRoom: React.FC<CallRoomProps> = ({
   const mediaOpen = showWatchParty || showTvGarden;
   const [showStats, setShowStats] = useState(false);
   const [showSettings, setShowSettings] = useState(false);
+  const [isAIFeaturesEnabled, setIsAIFeaturesEnabled] = useState(false);
   const [activeAudioId, setActiveAudioId] = useState(initialAudioId);
   const [activeVideoId, setActiveVideoId] = useState(initialVideoId);
 
@@ -225,11 +227,12 @@ export const CallRoom: React.FC<CallRoomProps> = ({
   const [isCopied, setIsCopied] = useState(false);
   const handleCopyInvite = async () => {
     try {
+      const fullUrl = `${window.location.origin}${window.location.pathname}?room=${roomId}`;
       if (navigator.clipboard && window.isSecureContext) {
-        await navigator.clipboard.writeText(roomId);
+        await navigator.clipboard.writeText(fullUrl);
       } else {
         const textArea = document.createElement("textarea");
-        textArea.value = roomId;
+        textArea.value = fullUrl;
         textArea.style.position = "fixed";
         document.body.appendChild(textArea);
         textArea.focus();
@@ -354,16 +357,7 @@ export const CallRoom: React.FC<CallRoomProps> = ({
         </div>
       )}
 
-      {/* AI bar — hidden on mobile while watch party is open */}
-      <div className={`shrink-0 pt-safe ${mediaOpen ? 'hidden sm:block' : ''}`}>
-        <AiPersonaBar
-          activePersonas={activePersonas}
-          onSummon={summonAI}
-          onRemove={removeAI}
-          onOpenSettings={() => setShowSettings(true)}
-          className="pb-2 pt-2"
-        />
-      </div>
+
 
       {/* Main stage */}
       <div className={`relative flex min-h-0 flex-1 overflow-hidden ${mediaOpen ? 'flex-col sm:flex-row' : ''}`}>
@@ -563,22 +557,125 @@ export const CallRoom: React.FC<CallRoomProps> = ({
             isScreenRecording={isScreenRecording}
             recordingDurationSec={recordingDurationSec}
             onToggleScreenRecording={handleToggleScreenRecording}
+            onOpenSettings={() => setShowSettings(true)}
           />
         </div>
       </div>
 
       <Dialog open={showSettings} onOpenChange={setShowSettings}>
-        <DialogContent className="bg-zinc-950 border border-zinc-800 text-zinc-200 sm:max-w-md">
+        <DialogContent className="bg-zinc-950 border border-zinc-800 text-zinc-200 sm:max-w-2xl max-h-[85vh] overflow-y-auto">
           <DialogHeader>
             <DialogTitle className="text-sm font-bold uppercase tracking-wider text-zinc-300">Call Settings</DialogTitle>
           </DialogHeader>
-          <div className="py-4">
-            <DeviceSelect
-              onAudioChange={handleAudioSwap}
-              onVideoChange={handleVideoSwap}
-              selectedAudio={activeAudioId}
-              selectedVideo={activeVideoId}
-            />
+          <div className="py-4 space-y-6">
+            <div>
+              <h3 className="text-xs font-semibold text-zinc-400 mb-2 uppercase tracking-wide">Devices</h3>
+              <DeviceSelect
+                onAudioChange={handleAudioSwap}
+                onVideoChange={handleVideoSwap}
+                selectedAudio={activeAudioId}
+                selectedVideo={activeVideoId}
+              />
+            </div>
+            
+            <div className="border-t border-zinc-800 pt-4">
+              <div className="flex items-center justify-between mb-2">
+                <h3 className="text-xs font-semibold text-zinc-400 uppercase tracking-wide">AI Features</h3>
+                <Button
+                  variant="outline"
+                  size="sm"
+                  onClick={() => setIsAIFeaturesEnabled(!isAIFeaturesEnabled)}
+                  className={`h-7 px-3 text-[10px] uppercase font-bold tracking-wider rounded-full transition-colors ${
+                    isAIFeaturesEnabled 
+                      ? 'bg-brand-cyan/20 text-brand-cyan border-brand-cyan/30 hover:bg-brand-cyan/30' 
+                      : 'bg-zinc-800 text-zinc-400 border-zinc-700 hover:bg-zinc-700'
+                  }`}
+                >
+                  {isAIFeaturesEnabled ? 'Enabled' : 'Disabled'}
+                </Button>
+              </div>
+              
+              {isAIFeaturesEnabled && (
+                <div className="mt-4 bg-black/30 rounded-xl p-2 border border-white/5">
+                  <p className="text-[10px] text-zinc-500 mb-2 px-1">Select an AI persona to join the call:</p>
+                  <AiPersonaBar
+                    activePersonas={activePersonas}
+                    onSummon={summonAI}
+                    onRemove={removeAI}
+                    className="pb-1 pt-1"
+                  />
+                </div>
+              )}
+            </div>
+
+            <div className="border-t border-zinc-800 pt-4">
+              <h3 className="text-xs font-semibold text-zinc-400 mb-4 uppercase tracking-wide">Media & Tools</h3>
+              <div className="grid grid-cols-1 sm:grid-cols-2 gap-4">
+                
+                <div className="space-y-3">
+                  <div className="flex items-center gap-2">
+                    <Popcorn className="size-4 text-brand-orange" />
+                    <h4 className="text-sm font-medium">Watch Party</h4>
+                  </div>
+                  <p className="text-xs text-zinc-500">Sync YouTube videos with everyone in the call.</p>
+                  <Button
+                    variant={showWatchParty ? "secondary" : "outline"}
+                    className={`w-full justify-start ${showWatchParty ? 'border-brand-orange/40 bg-brand-orange/20 text-brand-orange' : ''}`}
+                    onClick={() => {
+                      toggleWatchParty();
+                      setShowSettings(false);
+                    }}
+                  >
+                    {showWatchParty ? 'Close Watch Party' : 'Open Watch Party'}
+                  </Button>
+                </div>
+
+                <div className="space-y-3">
+                  <div className="flex items-center gap-2">
+                    <Globe2 className="size-4 text-brand-cyan" />
+                    <h4 className="text-sm font-medium">TV Garden</h4>
+                  </div>
+                  <p className="text-xs text-zinc-500">Watch live global IPTV channels together.</p>
+                  <Button
+                    variant={showTvGarden ? "secondary" : "outline"}
+                    className={`w-full justify-start ${showTvGarden ? 'border-brand-cyan/40 bg-brand-cyan/20 text-brand-cyan' : ''}`}
+                    onClick={() => {
+                      toggleTvGarden();
+                      setShowSettings(false);
+                    }}
+                  >
+                    {showTvGarden ? 'Close TV Garden' : 'Open TV Garden'}
+                  </Button>
+                </div>
+
+                <div className="space-y-3 sm:col-span-2 pt-2">
+                  <div className="flex items-center gap-2">
+                    <Languages className="size-4 text-violet-400" />
+                    <h4 className="text-sm font-medium">Live Translate</h4>
+                  </div>
+                  <p className="text-xs text-zinc-500">Real-time AI voice translation. Pick a target language below:</p>
+                  <div className="grid grid-cols-2 sm:grid-cols-4 gap-2">
+                    {LIVE_TRANSLATE_LANGUAGES.map((lang) => {
+                      const isActive = isTranslateActive && translateTargetLanguage === lang.code;
+                      return (
+                        <Button
+                          key={lang.code}
+                          variant={isActive ? "secondary" : "outline"}
+                          className={`text-xs h-8 ${isActive ? 'border-violet-400/40 bg-violet-400/20 text-violet-300 shadow-[0_0_10px_rgba(167,139,250,0.2)]' : 'text-zinc-400 hover:text-zinc-200'}`}
+                          onClick={() => {
+                            if (isActive) stopLiveTranslate();
+                            else startLiveTranslate(lang.code);
+                          }}
+                        >
+                          {lang.label}
+                        </Button>
+                      );
+                    })}
+                  </div>
+                </div>
+
+              </div>
+            </div>
           </div>
           <div className="flex justify-end pt-2">
             <Button
