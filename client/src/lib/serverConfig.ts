@@ -1,10 +1,10 @@
 const DEFAULT_SERVER = 'http://localhost:5001';
 
-/** HTTP base URL for v_call signaling + REST APIs (set via VITE_SIGNALING_SERVER in production). */
+/** HTTP base URL for v_call signaling + REST APIs. */
 export const SIGNALING_SERVER = (
   import.meta.env.VITE_SIGNALING_SERVER ||
   import.meta.env.VITE_SERVER_URL ||
-  DEFAULT_SERVER
+  (import.meta.env.PROD ? window.location.origin : DEFAULT_SERVER)
 ).replace(/\/$/, '');
 
 export function toWebSocketUrl(httpUrl: string, path: string): string {

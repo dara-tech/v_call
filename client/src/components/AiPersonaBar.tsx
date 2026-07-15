@@ -1,10 +1,11 @@
 import React from 'react';
-import { Settings, X } from 'lucide-react';
+import { X } from 'lucide-react';
 import type { AIPersona } from '../lib/ai/types';
 import { PERSONAS } from '../lib/ai/personas';
 import { getPersonaAvatarUrlFromKey } from '../lib/ai/avatarStyles';
 import { playFutureClick } from '../lib/ui/futureClickSound';
-import { Tooltip, TooltipContent, TooltipProvider, TooltipTrigger } from './ui/tooltip';
+import { TooltipProvider } from './ui/tooltip';
+
 
 const PERSONA_ORDER: AIPersona[] = [
   'lily',

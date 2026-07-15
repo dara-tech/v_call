@@ -1,7 +1,6 @@
-import React, { useState } from 'react';
+import React from 'react';
 import { Button } from './ui/button';
 import { Tooltip, TooltipContent, TooltipProvider, TooltipTrigger } from './ui/tooltip';
-import { Popover, PopoverContent, PopoverTrigger } from './ui/popover';
 import {
   Mic,
   MicOff,
@@ -9,16 +8,11 @@ import {
   VideoOff,
   Monitor,
   PhoneOff,
-  Popcorn,
-  Globe2,
   Copy,
   Check,
-  Languages,
   CircleDot,
   Settings as SettingsIcon,
 } from 'lucide-react';
-import { LIVE_TRANSLATE_LANGUAGES } from '../lib/ai/liveConfig';
-import { playFutureClick } from '../lib/ui/futureClickSound';
 
 interface ToolbarProps {
   isMuted: boolean;
@@ -26,21 +20,13 @@ interface ToolbarProps {
   isScreenSharing: boolean;
   showChat?: boolean;
   showStats: boolean;
-  showWatchParty: boolean;
-  showTvGarden?: boolean;
   unreadCount?: number;
-  isTranslateActive?: boolean;
-  translateTargetLanguage?: string;
   translateState?: string;
-  onStartLiveTranslate?: (langCode: string) => void;
-  onStopLiveTranslate?: () => void;
   onToggleMute: () => void;
   onToggleCamera: () => void;
   onToggleScreenShare: () => void;
   onToggleChat?: () => void;
   onToggleStats: () => void;
-  onToggleWatchParty: () => void;
-  onToggleTvGarden?: () => void;
   onLeaveCall: () => void;
   onCopyInvite?: () => void;
   isCopied?: boolean;
@@ -54,17 +40,9 @@ export const Toolbar: React.FC<ToolbarProps> = ({
   isMuted,
   isCameraOff,
   isScreenSharing,
-  showWatchParty,
-  showTvGarden = false,
-  isTranslateActive = false,
-  translateTargetLanguage = 'km',
-  onStartLiveTranslate,
-  onStopLiveTranslate,
   onToggleMute,
   onToggleCamera,
   onToggleScreenShare,
-  onToggleWatchParty,
-  onToggleTvGarden,
   onLeaveCall,
   onCopyInvite,
   isCopied,
