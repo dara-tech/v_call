@@ -86,6 +86,8 @@ export type { PeerInfo, PeerState, ChatMessage, VideoSyncState, CallStats } from
 export const useWebRTC = (roomId: string, userName: string, userId: string, activeCall?: any, watchPartyStream: MediaStream | null = null) => {
   const [peers, setPeers] = useState<Record<string, PeerState>>({});
   const [isHandRaised, setIsHandRaised] = useState(false);
+  const [isHost, setIsHost] = useState(false);
+  const [hostSocketId, setHostSocketId] = useState<string | null>(null);
   
   const [stats, setStats] = useState<CallStats>({
     latency: 0, bitrateIn: 0, bitrateOut: 0, packetLoss: 0, fps: 0, resolution: '0x0', connectionState: 'new',
@@ -98,6 +100,8 @@ export const useWebRTC = (roomId: string, userName: string, userId: string, acti
   const localStreamRef = useRef<MediaStream | null>(null);
   const statsIntervalRef = useRef<number | null>(null);
   const iceServersRef = useRef<RTCConfiguration>(ICE_SERVERS);
+  // Grace period timers: socketId -> timeout handle, prevents flash-of-absence on reconnect
+  const disconnectTimersRef = useRef<Record<string, ReturnType<typeof setTimeout>>>({}); 
   
   const hostedVirtualPeersRef = useRef<Record<string, {
     info: PeerInfo;
@@ -125,6 +129,7 @@ export const useWebRTC = (roomId: string, userName: string, userId: string, acti
     setupDataChannel, sendChatMessage, broadcastVideoState,
     patchVideoState, addToQueue, removeFromQueue, playQueueIndex,
     playNextInQueue, playPreviousInQueue, clearQueue,
+    typingUsers, sendTypingState, markMessagesSeen
   } = useChatDataChannel({ userName, peersRef, hostedVirtualPeersRef, syncPeersState, localSocketIdRef });
 
   const assignStreamToPeer = useCallback((targetSocketId: string, event: RTCTrackEvent) => {
@@ -559,17 +564,58 @@ export const useWebRTC = (roomId: string, userName: string, userId: string, acti
       }
     });
 
-    socket.on('user-left', ({ socketId }) => {
-      const peer = peersRef.current[socketId];
-      if (peer) {
-        if (peer.pc) peer.pc.close();
-        if (peer.dataChannel) peer.dataChannel.close();
-        delete peersRef.current[socketId];
-        syncPeersState();
+    socket.on('host-info', ({ hostSocketId: h, isHost: im }) => {
+      setHostSocketId(h);
+      setIsHost(im);
+    });
+
+    socket.on('host-changed', ({ hostSocketId: h }) => {
+      setHostSocketId(h);
+      if (localSocketIdRef.current) {
+        setIsHost(localSocketIdRef.current === h);
       }
     });
 
+    socket.on('you-are-muted', () => {
+      toast.warning('Host muted you');
+      // Force-mute the local mic if not already muted
+      if (!isMuted) {
+        toggleMute();
+      }
+    });
+
+    socket.on('you-are-kicked', () => {
+      toast.error('You have been removed from the room by the host.');
+      setTimeout(() => leaveCall(), 1500);
+    });
+
+    socket.on('user-left', ({ socketId }) => {
+      // Use a grace period so a quick reload doesn't flash-remove the peer tile
+      const delay = setTimeout(() => {
+        const peer = peersRef.current[socketId];
+        if (peer) {
+          if (peer.pc) peer.pc.close();
+          if (peer.dataChannel) peer.dataChannel.close();
+          delete peersRef.current[socketId];
+          syncPeersState();
+        }
+        delete disconnectTimersRef.current[socketId];
+      }, 4000);
+      disconnectTimersRef.current[socketId] = delay;
+    });
+
     socket.on('user-joined', (user: PeerInfo) => {
+      // Cancel any pending removal for a peer with the same userId (quick reconnect)
+      Object.entries(disconnectTimersRef.current).forEach(([oldSocketId, timer]) => {
+        const oldPeer = peersRef.current[oldSocketId];
+        if (oldPeer?.info.userId === user.userId) {
+          clearTimeout(timer);
+          delete disconnectTimersRef.current[oldSocketId];
+          // Clean up old socket entry silently without triggering re-render
+          if (peersRef.current[oldSocketId]?.pc) peersRef.current[oldSocketId].pc.close();
+          delete peersRef.current[oldSocketId];
+        }
+      });
       if (user.socketId?.startsWith('ai_')) {
         if (!peersRef.current[user.socketId]) {
           peersRef.current[user.socketId] = {
@@ -686,11 +732,21 @@ export const useWebRTC = (roomId: string, userName: string, userId: string, acti
     };
   }, [watchPartyStream]);
 
+  const muteUser = useCallback((targetSocketId: string) => {
+    socketRef.current?.emit('mute-user', { targetSocketId });
+  }, []);
+
+  const kickUser = useCallback((targetSocketId: string) => {
+    socketRef.current?.emit('kick-user', { targetSocketId });
+  }, []);
+
   return {
     localStream, peers, isMuted, isCameraOff, isScreenSharing, chatMessages, stats, videoSyncState, localSocketId,
-    isHandRaised, sendChatMessage, broadcastVideoState, patchVideoState,
+    isHandRaised, isHost, hostSocketId,
+    sendChatMessage, broadcastVideoState, patchVideoState,
     addToQueue, removeFromQueue, playQueueIndex, playNextInQueue, playPreviousInQueue, clearQueue,
     toggleMute, toggleCamera, toggleScreenShare, toggleHand, sendReaction, leaveCall, initLocalMedia,
-    summonAI, removeAI
+    summonAI, removeAI, muteUser, kickUser,
+    typingUsers, sendTypingState, markMessagesSeen
   };
 };

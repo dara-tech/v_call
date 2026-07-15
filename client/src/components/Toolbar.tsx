@@ -11,6 +11,8 @@ import {
   Copy,
   Check,
   CircleDot,
+  MessageSquare,
+  Users,
   Settings as SettingsIcon,
 } from 'lucide-react';
 
@@ -19,14 +21,15 @@ interface ToolbarProps {
   isCameraOff: boolean;
   isScreenSharing: boolean;
   showChat?: boolean;
-  showStats: boolean;
+  showParticipants?: boolean;
+  participantCount?: number;
   unreadCount?: number;
   translateState?: string;
   onToggleMute: () => void;
   onToggleCamera: () => void;
   onToggleScreenShare: () => void;
   onToggleChat?: () => void;
-  onToggleStats: () => void;
+  onToggleParticipants?: () => void;
   onLeaveCall: () => void;
   onCopyInvite?: () => void;
   isCopied?: boolean;
@@ -40,6 +43,11 @@ export const Toolbar: React.FC<ToolbarProps> = ({
   isMuted,
   isCameraOff,
   isScreenSharing,
+  showChat,
+  showParticipants,
+  participantCount = 0,
+  onToggleChat,
+  onToggleParticipants,
   onToggleMute,
   onToggleCamera,
   onToggleScreenShare,
@@ -48,6 +56,7 @@ export const Toolbar: React.FC<ToolbarProps> = ({
   isCopied,
   isScreenRecording = false,
   recordingDurationSec = 0,
+  unreadCount = 0,
   onToggleScreenRecording,
   onOpenSettings,
 }) => {
@@ -55,7 +64,7 @@ export const Toolbar: React.FC<ToolbarProps> = ({
 
   return (
     <TooltipProvider delayDuration={200}>
-      <div className="flex w-full max-w-full items-center justify-center gap-0.5 overflow-x-auto rounded-2xl border border-white/10 bg-zinc-900/60 p-1.5 shadow-[0_8px_32px_rgba(0,0,0,0.6)] backdrop-blur-3xl scrollbar-none sm:gap-2 sm:rounded-full sm:p-2 [&::-webkit-scrollbar]:hidden [-ms-overflow-style:none]">
+      <div className="flex w-full max-w-full items-center justify-center gap-0.5 overflow-x-auto p-1.5 scrollbar-none sm:gap-2 sm:p-2 [&::-webkit-scrollbar]:hidden [-ms-overflow-style:none]">
 
         {/* Toggle Audio */}
         <Tooltip>
@@ -64,7 +73,7 @@ export const Toolbar: React.FC<ToolbarProps> = ({
               type="button"
               variant={isMuted ? 'destructive' : 'outline'}
               size="icon-sm"
-              className="shrink-0 snap-center size-[2.25rem] sm:size-[2.75rem] rounded-full transition-all border-white/5 hover:bg-white/10 shadow-sm"
+              className="shrink-0 snap-center size-[2.25rem] sm:size-[2.75rem] rounded-xl transition-all border-white/5 hover:bg-white/10 shadow-sm"
               onClick={onToggleMute}
             >
               {isMuted ? <MicOff className="size-3.5 sm:size-4" /> : <Mic className="size-3.5 sm:size-4" />}
@@ -82,7 +91,7 @@ export const Toolbar: React.FC<ToolbarProps> = ({
               type="button"
               variant={isCameraOff ? 'destructive' : 'outline'}
               size="icon-sm"
-              className="shrink-0 snap-center size-[2.25rem] sm:size-[2.75rem] rounded-full transition-all border-white/5 hover:bg-white/10 shadow-sm"
+              className="shrink-0 snap-center size-[2.25rem] sm:size-[2.75rem] rounded-xl transition-all border-white/5 hover:bg-white/10 shadow-sm"
               onClick={onToggleCamera}
             >
               {isCameraOff ? <VideoOff className="size-3.5 sm:size-4" /> : <Video className="size-3.5 sm:size-4" />}
@@ -100,7 +109,7 @@ export const Toolbar: React.FC<ToolbarProps> = ({
               type="button"
               variant={isScreenSharing ? 'secondary' : 'outline'}
               size="icon-sm"
-              className={`shrink-0 snap-center size-[2.25rem] sm:size-[2.75rem] rounded-full transition-all border-white/5 shadow-sm ${isScreenSharing ? 'text-brand-cyan bg-brand-cyan/20 border-brand-cyan/30' : 'hover:bg-white/10'}`}
+              className={`shrink-0 snap-center size-[2.25rem] sm:size-[2.75rem] rounded-xl transition-all border-white/5 shadow-sm ${isScreenSharing ? 'text-brand-cyan bg-brand-cyan/20 border-brand-cyan/30' : 'hover:bg-white/10'}`}
               onClick={onToggleScreenShare}
             >
               <Monitor className="size-3.5 sm:size-4" />
@@ -119,7 +128,7 @@ export const Toolbar: React.FC<ToolbarProps> = ({
                 type="button"
                 variant={isScreenRecording ? 'destructive' : 'outline'}
                 size="icon-sm"
-                className={`shrink-0 snap-center size-[2.25rem] sm:size-[2.75rem] rounded-full transition-all shadow-sm ${
+                className={`shrink-0 snap-center size-[2.25rem] sm:size-[2.75rem] rounded-xl transition-all shadow-sm ${
                   isScreenRecording
                     ? 'animate-pulse border-brand-rose bg-brand-rose hover:bg-brand-rose'
                     : 'border-brand-rose/40 text-brand-rose hover:bg-brand-rose/10'
@@ -142,6 +151,56 @@ export const Toolbar: React.FC<ToolbarProps> = ({
 
 
 
+        {/* Chat Toggle */}
+        {onToggleChat && (
+          <Tooltip>
+            <TooltipTrigger asChild>
+              <Button
+                type="button"
+                variant={showChat ? 'secondary' : 'outline'}
+                size="icon-sm"
+                className={`shrink-0 snap-center size-[2.25rem] sm:size-[2.75rem] rounded-xl transition-all border-white/5 shadow-sm relative ${showChat ? 'text-brand-violet bg-brand-violet/20 border-brand-violet/30' : 'hover:bg-white/10'}`}
+                onClick={onToggleChat}
+              >
+                <MessageSquare className="size-3.5 sm:size-4" />
+                {!showChat && unreadCount > 0 && (
+                  <span className="absolute -top-1 -right-1 flex h-4 min-w-[16px] items-center justify-center rounded-full bg-brand-rose px-1 text-[9px] font-bold text-white shadow ring-2 ring-zinc-950">
+                    {unreadCount > 99 ? '99+' : unreadCount}
+                  </span>
+                )}
+              </Button>
+            </TooltipTrigger>
+            <TooltipContent side="top" className="bg-zinc-950 text-white border-white/10 text-xs hidden sm:block">
+              <p>{showChat ? 'Close chat' : 'Open chat'}</p>
+            </TooltipContent>
+          </Tooltip>
+        )}
+
+        {/* Participants */}
+        {onToggleParticipants && (
+          <Tooltip>
+            <TooltipTrigger asChild>
+              <Button
+                type="button"
+                variant={showParticipants ? 'secondary' : 'outline'}
+                size="icon-sm"
+                className={`shrink-0 snap-center size-[2.25rem] sm:size-[2.75rem] rounded-xl transition-all border-white/5 shadow-sm relative ${showParticipants ? 'text-brand-cyan bg-brand-cyan/20 border-brand-cyan/30' : 'hover:bg-white/10'}`}
+                onClick={onToggleParticipants}
+              >
+                <Users className="size-3.5 sm:size-4" />
+                {participantCount > 0 && (
+                  <span className="absolute -top-1 -right-1 flex h-4 min-w-[16px] items-center justify-center rounded-full bg-zinc-700 px-1 text-[9px] font-bold text-white shadow ring-2 ring-zinc-950">
+                    {participantCount > 99 ? '99+' : participantCount}
+                  </span>
+                )}
+              </Button>
+            </TooltipTrigger>
+            <TooltipContent side="top" className="bg-zinc-950 text-white border-white/10 text-xs hidden sm:block">
+              <p>{showParticipants ? 'Hide participants' : 'Participants'}</p>
+            </TooltipContent>
+          </Tooltip>
+        )}
+
         {/* Copy Invite Link */}
         {onCopyInvite && (
           <Tooltip>
@@ -150,7 +209,7 @@ export const Toolbar: React.FC<ToolbarProps> = ({
                 type="button"
                 variant="outline"
                 size="icon-sm"
-                className={`shrink-0 snap-center size-[2.25rem] sm:size-[2.75rem] rounded-full transition-all border-white/5 shadow-sm ${isCopied ? 'text-brand-emerald bg-brand-emerald/20 border-brand-emerald/30' : 'hover:bg-white/10'}`}
+                className={`shrink-0 snap-center size-[2.25rem] sm:size-[2.75rem] rounded-xl transition-all border-white/5 shadow-sm ${isCopied ? 'text-brand-emerald bg-brand-emerald/20 border-brand-emerald/30' : 'hover:bg-white/10'}`}
                 onClick={onCopyInvite}
               >
                 {isCopied ? <Check className="size-3.5 sm:size-4" /> : <Copy className="size-3.5 sm:size-4" />}
@@ -170,7 +229,7 @@ export const Toolbar: React.FC<ToolbarProps> = ({
                 type="button"
                 variant="outline"
                 size="icon-sm"
-                className="shrink-0 snap-center size-[2.25rem] sm:size-[2.75rem] rounded-full transition-all border-white/5 hover:bg-white/10 shadow-sm"
+                className="shrink-0 snap-center size-[2.25rem] sm:size-[2.75rem] rounded-xl transition-all border-white/5 hover:bg-white/10 shadow-sm"
                 onClick={onOpenSettings}
               >
                 <SettingsIcon className="size-3.5 sm:size-4" />
@@ -191,7 +250,7 @@ export const Toolbar: React.FC<ToolbarProps> = ({
               type="button"
               variant="destructive"
               size="icon-sm"
-              className="shrink-0 snap-center size-[2.25rem] sm:size-[2.75rem] bg-brand-rose hover:bg-brand-rose/90 rounded-full transition-all shadow-md"
+              className="shrink-0 snap-center size-[2.25rem] sm:size-[2.75rem] bg-brand-rose hover:bg-brand-rose/90 rounded-xl transition-all shadow-md"
               onClick={onLeaveCall}
             >
               <PhoneOff className="size-3.5 sm:size-4 text-white" />

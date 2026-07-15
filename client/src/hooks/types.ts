@@ -21,6 +21,7 @@ export interface ChatMessage {
   senderName: string;
   text: string;
   timestamp: Date;
+  seenBy?: string[];
 }
 
 export interface WatchPartyVideo {

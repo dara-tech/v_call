@@ -36,8 +36,12 @@ export const PreCallLobby: React.FC<PreCallLobbyProps> = ({
   defaultRoom,
   defaultName = '',
 }) => {
-  const [name, setName] = useState(defaultName || generateName());
-  const [room, setRoom] = useState(defaultRoom);
+  const [name, setName] = useState(() => {
+    return localStorage.getItem('vc_name') || defaultName || generateName();
+  });
+  const [room, setRoom] = useState(() => {
+    return localStorage.getItem('vc_room') || defaultRoom;
+  });
 
   const [audioId, setAudioId] = useState('');
   const [videoId, setVideoId] = useState('');
@@ -88,25 +92,23 @@ export const PreCallLobby: React.FC<PreCallLobbyProps> = ({
   }, [videoId, audioId, isVideoOff]);
 
   const handleJoinCall = () => {
-    // If they turned it off in pre-lobby, pass empty strings or a special token.
-    // For now, if they turn it off, we just let them join and CallRoom will handle it,
-    // though CallRoom will initialize with the device ID. 
-    onJoin(room.trim().toLowerCase(), name.trim(), isAudioOff ? '' : audioId, isVideoOff ? '' : videoId);
+    const trimmedRoom = room.trim().toLowerCase();
+    const trimmedName = name.trim();
+    // Persist for quick rejoin on reload
+    localStorage.setItem('vc_room', trimmedRoom);
+    localStorage.setItem('vc_name', trimmedName);
+    onJoin(trimmedRoom, trimmedName, isAudioOff ? '' : audioId, isVideoOff ? '' : videoId);
   };
 
   return (
-    <div className="relative flex min-h-dvh items-center justify-center overflow-hidden bg-[#070707] px-safe text-zinc-100">
-      <div className="pointer-events-none absolute inset-0">
-        <div className="absolute left-1/2 top-1/3 size-80 -translate-x-1/2 rounded-full bg-cyan-500/10 blur-3xl" />
-        <div className="absolute bottom-1/4 right-1/4 size-64 rounded-full bg-violet-500/10 blur-3xl" />
-      </div>
+    <div className="relative flex min-h-dvh items-center justify-center overflow-hidden bg-[radial-gradient(ellipse_at_top,_var(--tw-gradient-stops))] from-zinc-900/20 via-[#070707] to-[#070707] px-safe text-zinc-100">
 
-      <div className="relative z-10 flex w-full max-w-4xl flex-col items-center">
+      <div className="relative z-10 flex w-full max-w-3xl flex-col items-center">
 
-        <div className="w-full flex flex-col md:flex-row gap-8 items-center md:items-stretch bg-zinc-900/50 p-6 md:p-8 rounded-3xl border border-white/5 backdrop-blur-xl">
+        <div className="w-full flex flex-col md:flex-row gap-6 items-center md:items-stretch bg-zinc-950/40 p-5 md:p-6 rounded-[2rem] border border-white/5 backdrop-blur-3xl ring-1 ring-white/10 shadow-[0_0_80px_rgba(0,0,0,0.8)]">
           
           {/* Video Preview */}
-          <div className="relative aspect-video w-full max-w-[480px] overflow-hidden rounded-2xl bg-zinc-950 shadow-2xl border border-white/10 shrink-0">
+          <div className="relative aspect-video w-full max-w-[400px] overflow-hidden rounded-2xl bg-zinc-950 shadow-inner border border-white/10 shrink-0">
             {isVideoOff ? (
               <div className="w-full h-full flex flex-col items-center justify-center text-zinc-600 bg-zinc-900/40">
                 <VideoOff className="size-8 mb-2" />
@@ -150,9 +152,9 @@ export const PreCallLobby: React.FC<PreCallLobbyProps> = ({
           <div className="flex-1 w-full flex flex-col justify-between space-y-6">
             
             <div className="space-y-4">
-              <h2 className="text-xl font-semibold text-white">Ready to join?</h2>
+              <h2 className="text-lg font-semibold text-white tracking-tight">Ready to join?</h2>
               
-              <div className="bg-black/40 p-5 rounded-2xl border border-white/5 space-y-4">
+              <div className="bg-black/20 p-4 rounded-xl border border-white/5 space-y-3">
                 <DeviceSelect
                   onAudioChange={setAudioId}
                   onVideoChange={setVideoId}
@@ -175,7 +177,7 @@ export const PreCallLobby: React.FC<PreCallLobbyProps> = ({
                   />
                 </div>
                 
-                <div className="space-y-1.5 pt-4 border-t border-white/5">
+                <div className="space-y-1.5 pt-3 border-t border-white/5">
                   <label className="text-xs font-semibold text-zinc-400 flex items-center gap-1.5">
                     <Hash className="size-3.5" />
                     Room Name

@@ -1,4 +1,4 @@
-import { lazy, Suspense, useState } from 'react';
+import { lazy, Suspense, useState, useEffect } from 'react';
 import { Loader2 } from 'lucide-react';
 import { PreCallLobby } from './components/PreCallLobby';
 import { CallRoom } from './components/CallRoom';
@@ -10,6 +10,8 @@ const TvGardenPanel = lazy(() =>
 
 type AppScreen = 'lobby' | 'call' | 'tvgarden';
 
+const SESSION_KEY = 'vc_active_call';
+
 function App() {
   const [screen, setScreen] = useState<AppScreen>('lobby');
   const [callParams, setCallParams] = useState<{
@@ -19,12 +21,29 @@ function App() {
     videoId: string;
   } | null>(null);
 
+  // Auto-rejoin if session was active before reload
+  useEffect(() => {
+    try {
+      const saved = sessionStorage.getItem(SESSION_KEY);
+      if (saved) {
+        const params = JSON.parse(saved);
+        setCallParams(params);
+        setScreen('call');
+      }
+    } catch {
+      sessionStorage.removeItem(SESSION_KEY);
+    }
+  }, []);
+
   const handleJoin = (room: string, name: string, audioId: string, videoId: string) => {
-    setCallParams({ room, name, audioId, videoId });
+    const params = { room, name, audioId, videoId };
+    sessionStorage.setItem(SESSION_KEY, JSON.stringify(params));
+    setCallParams(params);
     setScreen('call');
   };
 
   const handleLeave = () => {
+    sessionStorage.removeItem(SESSION_KEY);
     setCallParams(null);
     setScreen('lobby');
   };
@@ -68,3 +87,4 @@ function App() {
 }
 
 export default App;
+

@@ -1,8 +1,7 @@
-import { useState, useCallback, type MutableRefObject } from 'react';
+import { useState, useCallback, useRef, type MutableRefObject } from 'react';
 import type { ChatMessage, VideoSyncState, PeerState, PeerInfo, WatchPartyVideo } from './types';
 import { createEmptyVideoSyncState, expectedPlayhead, getNextQueueIndex, getPreviousQueueIndex, playVideoAtIndex } from '../lib/watchPartyUtils';
 import { AIParticipant } from '../lib/AIParticipant';
-import { apiUrl } from '../lib/serverConfig';
 
 interface UseChatDataChannelProps {
   userName: string;
@@ -46,6 +45,8 @@ export const useChatDataChannel = ({
 }: UseChatDataChannelProps) => {
   const [chatMessages, setChatMessages] = useState<ChatMessage[]>([]);
   const [videoSyncState, setVideoSyncState] = useState<VideoSyncState>(createEmptyVideoSyncState());
+  const [typingUsers, setTypingUsers] = useState<string[]>([]);
+  const typingTimeouts = useRef<Record<string, ReturnType<typeof setTimeout>>>({});
 
   const setupDataChannel = useCallback((channel: RTCDataChannel, targetSocketId: string, remoteUserName: string) => {
     if (peersRef.current[targetSocketId]) {
@@ -69,6 +70,30 @@ export const useChatDataChannel = ({
             }
             return incoming;
           });
+        } else if (data.type === 'typing') {
+          const remoteUser = data.userName || remoteUserName || 'Remote';
+          if (data.isTyping) {
+            setTypingUsers(prev => prev.includes(remoteUser) ? prev : [...prev, remoteUser]);
+            if (typingTimeouts.current[remoteUser]) clearTimeout(typingTimeouts.current[remoteUser]);
+            typingTimeouts.current[remoteUser] = setTimeout(() => {
+              setTypingUsers(prev => prev.filter(u => u !== remoteUser));
+            }, 3000);
+          } else {
+            if (typingTimeouts.current[remoteUser]) clearTimeout(typingTimeouts.current[remoteUser]);
+            setTypingUsers(prev => prev.filter(u => u !== remoteUser));
+          }
+        } else if (data.type === 'seen') {
+          const remoteUser = data.userName || remoteUserName || 'Remote';
+          const msgIds = data.messageIds || [];
+          setChatMessages(prev => prev.map(msg => {
+            if (msgIds.includes(msg.id)) {
+              const currentSeen = msg.seenBy || [];
+              if (!currentSeen.includes(remoteUser)) {
+                return { ...msg, seenBy: [...currentSeen, remoteUser] };
+              }
+            }
+            return msg;
+          }));
         }
       } catch { /* noop */ }
     };
@@ -96,42 +121,6 @@ export const useChatDataChannel = ({
           vp.aiInstance.sendSystemContext(`[CHAT MESSAGE from ${userName}]: ${text}. Please reply naturally with your voice if appropriate.`);
         }
       });
-    } else {
-      try {
-        const res = await fetch(apiUrl('/api/ai/chat'), {
-          method: 'POST',
-          headers: { 'Content-Type': 'application/json' },
-          body: JSON.stringify({ message: text, userName }),
-        });
-        const data = await res.json();
-
-        if (data.error) {
-          throw new Error(typeof data.error === 'string' ? data.error : data.error.message || 'API Error');
-        }
-
-        if (data.reply) {
-          const aiMsgId = Math.random().toString(36).substr(2, 9);
-          const aiPayload = { type: 'chat', id: aiMsgId, text: data.reply, senderName: 'Lily (AI)' };
-
-          setChatMessages((prev) => [...prev, { id: aiMsgId, sender: 'remote', senderName: 'Lily (AI)', text: data.reply, timestamp: new Date() }]);
-
-          Object.values(peersRef.current).forEach((peer) => {
-            if (peer.dataChannel?.readyState === 'open') {
-              peer.dataChannel.send(JSON.stringify(aiPayload));
-            }
-          });
-        }
-      } catch (err: unknown) {
-        const errMsg = err instanceof Error ? err.message : 'Unknown error';
-        const isRateLimit = errMsg.toLowerCase().includes('quota') || errMsg.toLowerCase().includes('rate');
-
-        const aiMsgId = Math.random().toString(36).substr(2, 9);
-        setChatMessages((prev) => [...prev, {
-          id: aiMsgId, sender: 'remote', senderName: 'System',
-          text: isRateLimit ? 'Lily is currently busy (API Rate Limit). Please wait a minute before texting her again.' : `Failed to reach AI: ${errMsg}`,
-          timestamp: new Date(),
-        }]);
-      }
     }
   }, [userName, peersRef, hostedVirtualPeersRef]);
 
@@ -241,6 +230,25 @@ export const useChatDataChannel = ({
     patchVideoState({ queue: [], queueIndex: -1 });
   }, [patchVideoState]);
 
+  const sendTypingState = useCallback((isTyping: boolean) => {
+    const payload = { type: 'typing', userName, isTyping };
+    Object.values(peersRef.current).forEach((peer) => {
+      if (peer.dataChannel?.readyState === 'open') {
+        peer.dataChannel.send(JSON.stringify(payload));
+      }
+    });
+  }, [userName, peersRef]);
+
+  const markMessagesSeen = useCallback((messageIds: string[]) => {
+    if (messageIds.length === 0) return;
+    const payload = { type: 'seen', userName, messageIds };
+    Object.values(peersRef.current).forEach((peer) => {
+      if (peer.dataChannel?.readyState === 'open') {
+        peer.dataChannel.send(JSON.stringify(payload));
+      }
+    });
+  }, [userName, peersRef]);
+
   return {
     chatMessages,
     setChatMessages,
@@ -256,5 +264,8 @@ export const useChatDataChannel = ({
     playNextInQueue,
     playPreviousInQueue,
     clearQueue,
+    typingUsers,
+    sendTypingState,
+    markMessagesSeen,
   };
 };

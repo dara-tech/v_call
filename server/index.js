@@ -62,6 +62,31 @@ app.get('/api/search', async (req, res) => {
   }
 });
 
+app.post('/api/ai/chat', express.json(), async (req, res) => {
+  try {
+    const { message, userName } = req.body;
+    const API_KEY = process.env.GEMINI_API_KEY;
+    if (!API_KEY) return res.status(500).json({ error: 'GEMINI_API_KEY is not configured on the server.' });
+
+    const response = await fetch(`https://generativelanguage.googleapis.com/v1beta/models/gemini-1.5-flash:generateContent?key=${API_KEY}`, {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({
+        contents: [{ parts: [{ text: `You are Lily, a friendly AI in a video call room. The user ${userName} just said: "${message}". Keep your reply very short and conversational (1-2 sentences).` }] }]
+      })
+    });
+    
+    const data = await response.json();
+    if (data.error) throw new Error(data.error.message);
+    
+    const reply = data.candidates?.[0]?.content?.parts?.[0]?.text || 'I am not sure what to say!';
+    res.json({ reply });
+  } catch (error) {
+    console.error('[AI Chat] Error:', error.message);
+    res.status(500).json({ error: error.message });
+  }
+});
+
 app.get('/api/calls/youtube-audio', (req, res) => {
   const url = req.query.url;
   const startSeconds = Math.max(0, Number(req.query.t) || 0);
@@ -113,6 +138,16 @@ function handleLeave(socket) {
 
   socket.to(roomId).emit('user-left', { socketId: socket.id, userId });
 
+  // Transfer host to next participant if host left
+  if (room.hostSocketId === socket.id) {
+    const remaining = Object.keys(room.participants).filter(id => !rooms[roomId]?.participants[id]?.isVirtual);
+    if (remaining.length > 0) {
+      room.hostSocketId = remaining[0];
+      console.log(`[Host Transfer] New host in room "${roomId}": ${remaining[0]}`);
+      socket.to(roomId).emit('host-changed', { hostSocketId: remaining[0] });
+    }
+  }
+
   if (Object.keys(room.participants).length === 0) {
     console.log(`[Room Empty] Deleting room "${roomId}"`);
     delete rooms[roomId];
@@ -133,7 +168,8 @@ io.on('connection', (socket) => {
     }
 
     if (!rooms[roomId]) {
-      rooms[roomId] = { participants: {} };
+      rooms[roomId] = { participants: {}, hostSocketId: socket.id };
+      console.log(`[Host Assigned] "${userName}" is host of room "${roomId}"`);
     }
 
     rooms[roomId].participants[socket.id] = { userId, userName };
@@ -142,13 +178,19 @@ io.on('connection', (socket) => {
 
     console.log(`[Join Room] User "${userName}" (${userId}) joined room "${roomId}"`);
 
+    const isHost = rooms[roomId].hostSocketId === socket.id;
+    const hostSocketId = rooms[roomId].hostSocketId;
+
     const others = Object.entries(rooms[roomId].participants)
       .filter(([id]) => id !== socket.id)
       .map(([id, info]) => ({ socketId: id, userId: info.userId, userName: info.userName }));
 
     socket.emit('all-users', others);
+    socket.emit('host-info', { hostSocketId, isHost });
 
     socket.to(roomId).emit('user-joined', { socketId: socket.id, userId, userName });
+    // Tell everyone the current host in case it changed (e.g. host rejoined)
+    io.to(roomId).emit('host-changed', { hostSocketId });
   });
 
   socket.on('relay-signal', ({ targetSocketId, signalData, virtualSenderId }) => {
@@ -185,6 +227,24 @@ io.on('connection', (socket) => {
 
   socket.on('reaction', ({ roomId, socketId: peerSocketId, emoji }) => {
     socket.to(roomId).emit('reaction', { socketId: peerSocketId, emoji });
+  });
+
+  // Host-only: mute a participant
+  socket.on('mute-user', ({ targetSocketId }) => {
+    const roomId = socketToRoom[socket.id];
+    const room = roomId ? rooms[roomId] : null;
+    if (!room || room.hostSocketId !== socket.id) return; // only host
+    io.to(targetSocketId).emit('you-are-muted');
+    console.log(`[Host Action] Host ${socket.id} muted ${targetSocketId}`);
+  });
+
+  // Host-only: kick a participant
+  socket.on('kick-user', ({ targetSocketId }) => {
+    const roomId = socketToRoom[socket.id];
+    const room = roomId ? rooms[roomId] : null;
+    if (!room || room.hostSocketId !== socket.id) return; // only host
+    io.to(targetSocketId).emit('you-are-kicked');
+    console.log(`[Host Action] Host ${socket.id} kicked ${targetSocketId}`);
   });
 
   socket.on('add-virtual-user', ({ roomId, virtualId, userName }) => {

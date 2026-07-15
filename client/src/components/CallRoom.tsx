@@ -37,7 +37,7 @@ interface CallRoomProps {
 }
 
 // Sub-component for remote peer video to handle its own stream binding
-const RemotePeerVideo: React.FC<{ peer: PeerState; muteForTranslate?: boolean }> = ({ peer, muteForTranslate }) => {
+const RemotePeerVideo: React.FC<{ peer: PeerState; muteForTranslate?: boolean; isHost?: boolean; onMute?: () => void; onKick?: () => void }> = ({ peer, muteForTranslate, isHost, onMute, onKick }) => {
   const videoRef = useRef<HTMLVideoElement>(null);
   const [isActiveSpeaker, setIsActiveSpeaker] = useState(false);
   
@@ -117,6 +117,25 @@ const RemotePeerVideo: React.FC<{ peer: PeerState; muteForTranslate?: boolean }>
           </span>
         )}
       </div>
+      {/* Host controls — only visible to host, only on non-AI peers, on hover */}
+      {isHost && !peer.aiState && (
+        <div className="absolute top-2 right-2 flex gap-1.5 opacity-0 group-hover:opacity-100 transition-opacity z-20">
+          <button
+            onClick={onMute}
+            title="Mute participant"
+            className="flex items-center gap-1 bg-black/70 hover:bg-amber-500/90 border border-white/10 text-white text-[10px] font-semibold px-2 py-1 rounded-lg backdrop-blur transition-colors"
+          >
+            <MicOff className="size-3" /> Mute
+          </button>
+          <button
+            onClick={onKick}
+            title="Remove participant"
+            className="flex items-center gap-1 bg-black/70 hover:bg-red-500/90 border border-white/10 text-white text-[10px] font-semibold px-2 py-1 rounded-lg backdrop-blur transition-colors"
+          >
+            ✕ Kick
+          </button>
+        </div>
+      )}
     </div>
   );
 };
@@ -155,11 +174,17 @@ export const CallRoom: React.FC<CallRoomProps> = ({
     toggleCamera,
     toggleScreenShare,
     isHandRaised,
+    isHost,
     leaveCall,
     initLocalMedia,
     summonAI,
     removeAI,
+    muteUser,
+    kickUser,
     localSocketId,
+    typingUsers,
+    sendTypingState,
+    markMessagesSeen,
   } = useWebRTC(roomId, userName, userId, activeCall, watchPartyAudioStream);
 
   const {
@@ -180,6 +205,7 @@ export const CallRoom: React.FC<CallRoomProps> = ({
   const [showTvGarden, setShowTvGarden] = useState(false);
   const mediaOpen = showWatchParty || showTvGarden;
   const [showStats, setShowStats] = useState(false);
+  const [showParticipants, setShowParticipants] = useState(false);
   const [showSettings, setShowSettings] = useState(false);
   const [isAIFeaturesEnabled, setIsAIFeaturesEnabled] = useState(false);
   const [activeAudioId, setActiveAudioId] = useState(initialAudioId);
@@ -225,6 +251,21 @@ export const CallRoom: React.FC<CallRoomProps> = ({
 
   // Initialize media devices once in call room
   const [isCopied, setIsCopied] = useState(false);
+  const [unreadCount, setUnreadCount] = useState(0);
+  const prevMessagesLength = useRef(0);
+
+  useEffect(() => {
+    if (showStats) {
+      setUnreadCount(0);
+    } else if (chatMessages.length > prevMessagesLength.current) {
+      const newMessages = chatMessages.slice(prevMessagesLength.current);
+      const newRemoteMessages = newMessages.filter(m => m.sender === 'remote');
+      if (newRemoteMessages.length > 0) {
+        setUnreadCount(prev => prev + newRemoteMessages.length);
+      }
+    }
+    prevMessagesLength.current = chatMessages.length;
+  }, [chatMessages, showStats]);
   const handleCopyInvite = async () => {
     try {
       const fullUrl = `${window.location.origin}${window.location.pathname}?room=${roomId}`;
@@ -347,7 +388,8 @@ export const CallRoom: React.FC<CallRoomProps> = ({
   }, [peerList.length]);
 
   return (
-    <div className="relative z-20 flex h-dvh w-full flex-col overflow-hidden bg-[#0a0a0a] font-sans text-zinc-300">
+    <div className="relative z-20 flex h-dvh w-full flex-col overflow-hidden bg-[radial-gradient(ellipse_at_top,_var(--tw-gradient-stops))] from-zinc-900/20 via-[#070707] to-[#070707] font-sans text-zinc-300">
+
       <Toaster theme="dark" position="top-center" />
 
       {isScreenRecording && (
@@ -416,7 +458,7 @@ export const CallRoom: React.FC<CallRoomProps> = ({
           </div>
         ) : (
         <div
-          className={`relative min-h-0 bg-[#0a0a0a] ${
+          className={`relative min-h-0 z-10 ${
             mediaOpen
               ? 'hidden min-w-0 sm:flex sm:h-full sm:w-72 sm:shrink-0 sm:flex-col sm:border-l sm:border-zinc-900 sm:p-2'
               : 'flex min-w-0 flex-1 flex-col'
@@ -436,11 +478,17 @@ export const CallRoom: React.FC<CallRoomProps> = ({
                     key={peer.info.socketId}
                     className={
                       mediaOpen
-                        ? 'aspect-video w-40 shrink-0 sm:w-full'
-                        : 'min-h-[180px] w-full sm:min-h-0'
+                        ? 'aspect-video w-40 shrink-0 sm:w-full group'
+                        : 'min-h-[180px] w-full sm:min-h-0 group'
                     }
                   >
-                    <RemotePeerVideo peer={peer} muteForTranslate={isTranslateActive && peer.aiState === undefined} />
+                    <RemotePeerVideo
+                      peer={peer}
+                      muteForTranslate={isTranslateActive && peer.aiState === undefined}
+                      isHost={isHost}
+                      onMute={() => muteUser(peer.info.socketId)}
+                      onKick={() => kickUser(peer.info.socketId)}
+                    />
                   </div>
                 ))}
               </div>
@@ -495,7 +543,7 @@ export const CallRoom: React.FC<CallRoomProps> = ({
               />
             ) : (
               <div className="flex h-full w-full items-center justify-center bg-gradient-to-br from-zinc-800 to-zinc-950">
-                <div className="flex size-8 items-center justify-center rounded-full bg-gradient-to-br from-cyan-500/30 to-violet-500/30 text-[10px] font-bold text-white sm:size-10 sm:text-xs">
+                <div className="flex size-8 items-center justify-center rounded-full bg-gradient-to-br from-yellow-500/30 to-amber-500/30 text-[10px] font-bold text-white sm:size-10 sm:text-xs">
                   {userInitial}
                 </div>
               </div>
@@ -521,11 +569,60 @@ export const CallRoom: React.FC<CallRoomProps> = ({
           <div className="absolute inset-0 z-40 flex bg-zinc-950 sm:static sm:inset-auto sm:z-20 sm:w-80 sm:shrink-0 sm:border-l sm:border-zinc-900/50 sm:bg-zinc-950/80 sm:backdrop-blur">
             <ChatPanel
               messages={chatMessages}
-              peers={peerList}
+
               selfName={userName}
               onSendMessage={sendChatMessage}
               onClose={() => setShowStats(false)}
+              typingUsers={typingUsers}
+              onTyping={sendTypingState}
+              onMessagesSeen={markMessagesSeen}
             />
+          </div>
+        )}
+
+        {/* Participants panel */}
+        {showParticipants && (
+          <div className="absolute inset-0 z-40 flex flex-col bg-zinc-950 sm:static sm:inset-auto sm:z-20 sm:w-72 sm:shrink-0 sm:border-l sm:border-zinc-900/50 sm:bg-zinc-950/80 sm:backdrop-blur">
+            <div className="flex items-center justify-between border-b border-zinc-900 px-4 py-3">
+              <h3 className="text-sm font-semibold text-white">
+                Participants <span className="ml-1 text-xs font-normal text-zinc-500">{peerList.filter(p => !p.aiState).length + 1}</span>
+              </h3>
+              <button onClick={() => setShowParticipants(false)} className="text-zinc-500 hover:text-white transition-colors text-xl leading-none">&times;</button>
+            </div>
+            <div className="flex-1 overflow-y-auto px-3 py-3 space-y-1">
+              {/* Self */}
+              <div className="flex items-center gap-3 rounded-xl px-3 py-2 bg-white/5">
+                <div className="flex size-8 items-center justify-center rounded-full bg-gradient-to-br from-yellow-500/30 to-amber-500/20 text-xs font-bold text-white shrink-0">
+                  {userInitial}
+                </div>
+                <div className="min-w-0 flex-1">
+                  <p className="text-sm font-medium text-white truncate">{userName} <span className="text-xs text-zinc-500">(You)</span></p>
+                  {isHost && <p className="text-[10px] text-amber-400 font-semibold">HOST</p>}
+                </div>
+              </div>
+              {/* Remote human peers */}
+              {peerList.filter(p => !p.aiState).map(peer => (
+                <div key={peer.info.socketId} className="flex items-center gap-3 rounded-xl px-3 py-2 hover:bg-white/5 transition-colors group/peer">
+                  <div className="flex size-8 items-center justify-center rounded-full bg-zinc-800 text-xs font-bold text-zinc-300 shrink-0">
+                    {peer.info.userName.replace(/[^a-zA-Z0-9]/g, '').slice(0, 2).toUpperCase() || '??'}
+                  </div>
+                  <div className="min-w-0 flex-1">
+                    <p className="text-sm font-medium text-zinc-200 truncate">{peer.info.userName}</p>
+                    {peer.handRaised && <p className="text-[10px] text-amber-400">✋ Hand raised</p>}
+                  </div>
+                  {isHost && (
+                    <div className="flex gap-1 opacity-0 group-hover/peer:opacity-100 transition-opacity shrink-0">
+                      <button onClick={() => muteUser(peer.info.socketId)} title="Mute" className="text-zinc-500 hover:text-amber-400 transition-colors p-1">
+                        <MicOff className="size-3.5" />
+                      </button>
+                      <button onClick={() => kickUser(peer.info.socketId)} title="Remove" className="text-zinc-500 hover:text-red-400 transition-colors p-1 text-base leading-none font-medium">
+                        &times;
+                      </button>
+                    </div>
+                  )}
+                </div>
+              ))}
+            </div>
           </div>
         )}
       </div>
@@ -537,12 +634,16 @@ export const CallRoom: React.FC<CallRoomProps> = ({
             isMuted={isMuted}
             isCameraOff={isCameraOff}
             isScreenSharing={isScreenSharing}
-            showStats={showStats}
+            showChat={showStats}
+            showParticipants={showParticipants}
+            participantCount={peerList.filter(p => !p.aiState).length + 1}
+            unreadCount={unreadCount}
             translateState={translateState}
             onToggleMute={toggleMute}
             onToggleCamera={toggleCamera}
             onToggleScreenShare={toggleScreenShare}
-            onToggleStats={() => setShowStats(!showStats)}
+            onToggleChat={() => setShowStats(!showStats)}
+            onToggleParticipants={() => setShowParticipants(!showParticipants)}
             onLeaveCall={handleExitRoom}
             onCopyInvite={!mediaOpen ? handleCopyInvite : undefined}
             isCopied={isCopied}
@@ -642,7 +743,7 @@ export const CallRoom: React.FC<CallRoomProps> = ({
 
                 <div className="space-y-3 sm:col-span-2 pt-2">
                   <div className="flex items-center gap-2">
-                    <Languages className="size-4 text-violet-400" />
+                    <Languages className="size-4 text-amber-400" />
                     <h4 className="text-sm font-medium">Live Translate</h4>
                   </div>
                   <p className="text-xs text-zinc-500">Real-time AI voice translation. Pick a target language below:</p>
@@ -653,7 +754,7 @@ export const CallRoom: React.FC<CallRoomProps> = ({
                         <Button
                           key={lang.code}
                           variant={isActive ? "secondary" : "outline"}
-                          className={`text-xs h-8 ${isActive ? 'border-violet-400/40 bg-violet-400/20 text-violet-300 shadow-[0_0_10px_rgba(167,139,250,0.2)]' : 'text-zinc-400 hover:text-zinc-200'}`}
+                          className={`text-xs h-8 ${isActive ? 'border-amber-400/40 bg-amber-400/20 text-amber-300 shadow-[0_0_10px_rgba(251,191,36,0.2)]' : 'text-zinc-400 hover:text-zinc-200'}`}
                           onClick={() => {
                             if (isActive) stopLiveTranslate();
                             else startLiveTranslate(lang.code);
